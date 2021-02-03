@@ -1,4 +1,4 @@
-# ModiaBase.jl
+# ModiaBase
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://modiasim.github.io/ModiaBase.jl/stable/)
 [![The MIT License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square)](https://github.com/ModiaSim/ModiaBase.jl/blob/master/LICENSE.md)
