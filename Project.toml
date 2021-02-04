@@ -14,3 +14,9 @@ Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
 julia = "1.5"
+DataFrames     = "0.22, 0.21, 0.20, 0.19"
+DataStructures = "0.18"
+DiffRules      = "1.0"
+Measurements   = "2.5"
+MonteCarloMeasurements = "0.10"
+Unitful      = "1.5, 1.4, 1.3"
