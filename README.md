@@ -46,7 +46,7 @@ The package is currently being registered. During this phase, it is installed as
 julia> ]add https://github.com/ModiaSim/ModiaBase.jl#main
 ```
 
-It is recommended to also add the following packages, in order that all tests and examples can be executed:
+It is recommended to also add the following packages, in order that all tests and examples can be executed in an own environment (`]test ModiaBase` works without adding these packages).
 
 ```julia
 julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
