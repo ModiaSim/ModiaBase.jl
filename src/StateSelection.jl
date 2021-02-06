@@ -46,6 +46,7 @@ const ERROR       = 2
         var_has_start          = v_original -> false,
         var_fixed              = v_original -> nothing,
         var_length             = v_original -> 1,
+        var_is_state           = v_original -> false,
         equation               = e          -> ""        
         isSolvableEquation     = (e_original,v_original) -> false,
         isLinearEquation       = (e_original,v_original) -> (false, false),
@@ -78,6 +79,9 @@ The functions need to have the following arguments:
 
 - `var_length(v_original::Int)::Int`:\\
    Return length of variable `v_original` from the original, undifferentiated equations.
+   
+-  `var_is_state(v_original::Int)::Bool`:\\
+   Return true, if variable `v_original` is defined to be a state.  
 
 - `equation(e::Int)`:\\
    Return equation as string or "", if equation is not provided.
@@ -113,6 +117,7 @@ struct StateSelectionFunctions
     var_nominal::Function
     var_unbounded::Function
     var_length::Function
+    var_is_state::Function
     equation::Function
     isSolvableEquation::Function
     isLinearEquation::Function
@@ -129,6 +134,7 @@ struct StateSelectionFunctions
         var_nominal            = v_original -> NaN,
         var_unbounded          = v_original -> false,
         var_length             = v_original -> 1,
+        var_is_state           = v_original -> false,        
         equation               = e          -> "",        
         isSolvableEquation     = (e_original,v_original) -> false,
         isLinearEquation       = (e_original,v_original) -> (false, false),
@@ -144,6 +150,7 @@ struct StateSelectionFunctions
             var_nominal,
             var_unbounded,
             var_length,
+            var_is_state,
             equation,            
             isSolvableEquation,
             isLinearEquation,
@@ -207,7 +214,8 @@ showCodeWithoutComments(code) = println("code = ", replace(sprint(show,code), r"
 
 
 """
-    (eConstraints,vConstraints) = getConstraintSets(BLT_i, assignRev, Arev, Brev, showMessage)
+    (eConstraints,vConstraints) = getConstraintSets(BLT_i, assignRev, Arev, Brev, 
+                                       var_is_state, showMessage)
 
 Determines the set of equations/constraints and their unknowns that are associated with
 the highest derivative level BLT block i (BLT_i), according to the dummy derivative
@@ -231,6 +239,8 @@ vConstraints[j] are the unknowns of eConstraints[j].
 
 - `Brev::Vector{Int}`: Reverted equation association: `Erev[i] = der(E[k]) == E[i] ? k : 0`.
 
+- `var_is_state::Function`: var_is_state(`vi`) returns true, if `vi` is defined to be a definite state.
+
 - showMessage: showMessage2 below to print error/warning message
 
 """
@@ -238,6 +248,7 @@ function getConstraintSets(BLT_i::Vector{Int},
                            assignRev::Vector{Int},
                            Arev::Vector{Int},
                            Brev::Vector{Int},
+                           var_is_state::Function,
                            showMessage::Function)
     # Determine unknowns of BLT block i
     BLT_i_unknowns = fill(0, length(BLT_i))
@@ -271,13 +282,25 @@ function getConstraintSets(BLT_i::Vector{Int},
         pushfirst!(eConstraints, ceq)   # move ceq to the beginning of the constraints vector
 
         # Determine unknowns of ceq
-        veq = fill(0, 0)
+        veq        = fill(0,0)
+        veq_states = fill(0,0)
         for vc in vConstraints[1]
             if Arev[vc] > 0
-                push!(veq, Arev[vc])
+                if var_is_state( Arev[vc] )
+                    push!(veq_states, Arev[vc])
+                else
+                    push!(veq, Arev[vc])
+                end
             end
         end
-        @assert( length(veq) > 0 )
+        if length(veq) < length(ceq)
+            nRemoveStates = length(veq_states) - (length(ceq) - length(veq))
+            showMessage("$nRemoveStates of the followig defined states cannot be states!";
+                severity  = ERROR,
+                variables = veq_states,
+                equations = ceq)
+            return (eConstraints, vConstraints, false)                
+        end
         pushfirst!(vConstraints, veq)   # move veq to the beginning of the constraints vector
     end
                 
@@ -479,7 +502,12 @@ mutable struct EquationGraph
 
         # Initialize the active variables
         vActive = fill(true, length(A))
-    
+        for v = 1:length(vActive)
+            if Arev[v] > 0
+                vActive[ Arev[v] ] = false    # Arev[v] is a potential state
+            end
+        end
+                
         # Define empty constraint sets
         eConstraintsVec = Vector{Vector{Int}}[]
         vConstraintsVec = Vector{Vector{Int}}[]
@@ -521,20 +549,21 @@ mutable struct EquationGraph
             if highest
                 # Get all equation sets eConstraints and their corresponding unknowns vConstraints
                 # from lowest to highest differentiation order (eConstraints[end] is c)
-                (eConstraints, vConstraints, success2) = getConstraintSets(BLT_i, assignRev, Arev, Brev, showMessage)
+                (eConstraints, vConstraints, success2) = getConstraintSets(BLT_i, assignRev, Arev, Brev,
+                                                         stateSelectionFunctions.var_is_state, showMessage)
                 if !success2
                     success=false
                     break
                 end
                 
                 # Initialize vActive
-                for vc in vConstraints
-                    for v in vc
-                        if Arev[v] > 0
-                            vActive[ Arev[v] ] = false    # Arev[v] is a potential state
-                        end
-                    end
-                end
+                #for vc in vConstraints
+                #    for v in vc
+                #        if Arev[v] > 0
+                #            vActive[ Arev[v] ] = false    # Arev[v] is a potential state
+                #        end
+                #    end
+                #end
                 
                 push!(eConstraintsVec, eConstraints)
                 push!(vConstraintsVec, vConstraints)
@@ -963,7 +992,7 @@ function sortEquations!(eq::EquationGraph)::Nothing
     # Matching of all equations
     assign    = matching(eq.G, length(eq.A), eq.vActive)
     assignRev = revertAssociation(assign)
-
+    
     # Sort equations and find strong components
     blt = BLT(eq.G,assign)
 
@@ -1160,6 +1189,7 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
                                stateSelectionFunctions::StateSelectionFunctions;
                                log::Bool        = false,
                                logDetails::Bool = false,
+                               logStates::Bool  = false,
                                modelName        = "???",
                                unitless::Bool   = false,
                                defaultParameterAndStartValues = nothing)
@@ -1270,16 +1300,29 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
                 
                 # Select dummy states
                 if i < length(eConstraints)
-                    # Not on highest derivative level. Solved variables are dummy states.
+                    # Not on highest derivative level. Solved variables are dummy states
                     for v in eq.vSolved
                         @assert(!eq.vActive[v])
                         eq.vActive[v] = true
-                    end                    
-                    if log
-                        println("    All other unknowns are solved and are dummy states.")
+                    end 
+                    
+                    if length(eConstraints[i]) == length(vConstraints[i])
+                        # N equations in N unknowns - tearing variables are dummy states
+                        for v in eq.vTear
+                            @assert(!eq.vActive[v])
+                            eq.vActive[v] = true
+                        end                               
+                        if log
+                            println("    All unknowns are dummy states.")
+                        end
+                        
+                    else        
+                        if log
+                            println("    All solved unknowns are dummy states.")
+                        end
                     end
                 elseif log
-                    println("    All other unknowns are solved.")
+                    println("    All unknowns are solved.")
                 end
 
                 # Further actions depending on type of equations
@@ -1379,7 +1422,7 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
                         v_stateCategory, v_length, v_unit, v_fixed2,
                         v_nominal, v_unbounded))
     end
-    if log
+    if log || logStates
         println("\nSelected ODE states: ")
         x_table = ModiaBase.get_x_table(x_info)
         show(stdout, x_table; allrows=true, allcols=true, summary=false, eltypes=false)
