@@ -73,12 +73,12 @@ available but must be adapted to ModiaBase):
 
 ## Installation
 
-The package is currently being registered. During this phase, it is installed as
-(Julia >= 1.5 is required):
+The package is registered and is installed with (Julia >= 1.5 is required):
 
 ```julia
-julia> ]add https://github.com/ModiaSim/ModiaBase.jl#main
+julia> ]add ModiaBase
 ```
+
 
 It is recommended to also add the following packages, in order that all tests and examples can be executed:
 
