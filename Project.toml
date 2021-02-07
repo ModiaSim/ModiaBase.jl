@@ -13,9 +13,9 @@ MonteCarloMeasurements = "0987c9cc-fe09-11e8-30f0-b96dd679fdca"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
-julia = "1.5"
+julia = "1.5, 1.6"
 DataFrames     = "0.22, 0.21, 0.20, 0.19"
-DataStructures = "0.18"
+DataStructures = "0.18, 0.17"
 DiffRules      = "1.0"
 Measurements   = "2.5"
 MonteCarloMeasurements = "0.10"
