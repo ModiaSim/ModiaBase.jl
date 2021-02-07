@@ -88,6 +88,11 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ## Release Notes
 
+### Version 0.7.1
+
+- Due to version conflicts, added version 0.17 of DataStructures in compat.
+
+
 ### Version 0.7.0
 
 - Initial version, based on code developed for Modia 0.6 and ModiaMath 0.6.
