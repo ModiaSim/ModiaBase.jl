@@ -48,14 +48,17 @@ Recursively converts der(x) to Symbol(:(der(x))) in expression `ex`
 * `ex`: Expression or array of expressions
 * `return `e`: ex with der(x) converted 
 """
-makeDerVar(ex) = ex
-function makeDerVar(ex::Expr)
+makeDerVar(ex, parameters) = if typeof(ex) in [Symbol, Expr] && ex in parameters; prepend(ex, :(_p)) else ex end
+
+function makeDerVar(ex::Expr, parameters=[])
     if ex.head == :call && ex.args[1] == :der
         Symbol(ex)
+	elseif isexpr(ex, :.) && ex in parameters
+		prepend(ex, :(_p))
     elseif ex.head == :.
         Symbol(ex)
     else
-        Expr(ex.head, [makeDerVar(arg) for arg in ex.args]...)
+        Expr(ex.head, [makeDerVar(arg, parameters) for arg in ex.args]...)
     end
 end
 
@@ -124,6 +127,9 @@ function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
         end
     elseif ex.head == :.
         push!(incidence, ex)
+#		if ex.args[2].value != :all
+#			push!(incidence, ex.args[1])
+#		end
     else
         # For example: =, vect, hcat, block
         [findIncidence!(e, incidence) for e in ex.args]
@@ -227,12 +233,14 @@ function linearFactor(ex::Expr, x)
         rest = sub(LHS[1], RHS[1])
         factor = sub(LHS[2], RHS[2])
         (rest, factor, LHS[3] && RHS[3])
-    elseif isexpr(ex, :vect)
+    elseif isexpr(ex, :vect) || isexpr(ex, :vcat) || isexpr(ex, :hcat) || isexpr(ex, :row)
         arguments = ex.args[2:end]
         factored = [linearFactor(a, x) for a in arguments]
         linears = [f[3] for f in factored]
         (ex, 0, all(linears))
     else
+        @warn "Unknown expression type" ex
+        dump(ex)
         (ex, 0, false)
     end
 end
