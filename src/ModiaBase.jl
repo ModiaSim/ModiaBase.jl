@@ -9,8 +9,8 @@ Main module of ModiaBase.
 module ModiaBase
 
 const path    = dirname(dirname(@__FILE__))   # Absolute path of package directory
-const Version = "0.7.0"
-const Date    = "2021-02-01"
+const Version = "0.7.2-dev"
+const Date    = "2021-03-08"
 
 #println("\nImporting ModiaBase Version $Version ($Date)")
 
@@ -35,5 +35,6 @@ using .Symbolic
 
 include("EquationAndStateInfo.jl")
 include("StateSelection.jl")
+include("toStateSpace.jl")
 
 end
