@@ -48,14 +48,17 @@ Recursively converts der(x) to Symbol(:(der(x))) in expression `ex`
 * `ex`: Expression or array of expressions
 * `return `e`: ex with der(x) converted 
 """
-makeDerVar(ex) = ex
-function makeDerVar(ex::Expr)
+makeDerVar(ex, parameters) = if typeof(ex) in [Symbol, Expr] && ex in parameters; prepend(ex, :(_p)) else ex end
+
+function makeDerVar(ex::Expr, parameters=[])
     if ex.head == :call && ex.args[1] == :der
         Symbol(ex)
+	elseif isexpr(ex, :.) && ex in parameters
+		prepend(ex, :(_p))
     elseif ex.head == :.
         Symbol(ex)
     else
-        Expr(ex.head, [makeDerVar(arg) for arg in ex.args]...)
+        Expr(ex.head, [makeDerVar(arg, parameters) for arg in ex.args]...)
     end
 end
 
@@ -124,8 +127,18 @@ function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
         end
     elseif ex.head == :.
         push!(incidence, ex)
+#		if ex.args[2].value != :all
+#			push!(incidence, ex.args[1])
+#		end
+    elseif ex.head == :generator
+        vars = [v.args[1] for v in ex.args[2:end]]
+        incid = Incidence[]
+        [findIncidence!(e, incid) for e in ex.args]
+        unique!(incid)
+        setdiff!(incid, vars)
+        push!(incidence, incid...)
     else
-        # For example: =, vect, hcat, block
+        # For example: =, vect, hcat, block, ref
         [findIncidence!(e, incidence) for e in ex.args]
     end
     nothing
@@ -227,13 +240,21 @@ function linearFactor(ex::Expr, x)
         rest = sub(LHS[1], RHS[1])
         factor = sub(LHS[2], RHS[2])
         (rest, factor, LHS[3] && RHS[3])
-    elseif isexpr(ex, :vect)
+    elseif isexpr(ex, :vect) || isexpr(ex, :vcat) || isexpr(ex, :hcat) || isexpr(ex, :row)
         arguments = ex.args[2:end]
         factored = [linearFactor(a, x) for a in arguments]
         linears = [f[3] for f in factored]
         (ex, 0, all(linears))
     else
-        (ex, 0, false)
+#        @warn "Unknown expression type" ex
+#        dump(ex)
+        incidence = Incidence[]
+        findIncidence!(ex, incidence)
+        if x in incidence
+            (ex, 0, false)
+        else
+            (ex, 0, true)
+        end
     end
 end
 
