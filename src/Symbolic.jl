@@ -130,8 +130,15 @@ function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
 #		if ex.args[2].value != :all
 #			push!(incidence, ex.args[1])
 #		end
+    elseif ex.head == :generator
+        vars = [v.args[1] for v in ex.args[2:end]]
+        incid = Incidence[]
+        [findIncidence!(e, incid) for e in ex.args]
+        unique!(incid)
+        setdiff!(incid, vars)
+        push!(incidence, incid...)
     else
-        # For example: =, vect, hcat, block
+        # For example: =, vect, hcat, block, ref
         [findIncidence!(e, incidence) for e in ex.args]
     end
     nothing
@@ -239,9 +246,15 @@ function linearFactor(ex::Expr, x)
         linears = [f[3] for f in factored]
         (ex, 0, all(linears))
     else
-        @warn "Unknown expression type" ex
-        dump(ex)
-        (ex, 0, false)
+#        @warn "Unknown expression type" ex
+#        dump(ex)
+        incidence = Incidence[]
+        findIncidence!(ex, incidence)
+        if x in incidence
+            (ex, 0, false)
+        else
+            (ex, 0, true)
+        end
     end
 end
 
