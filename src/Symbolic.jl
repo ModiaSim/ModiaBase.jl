@@ -112,7 +112,7 @@ Traverses an expression and finds incidences of Symbols and der(...)
 * `incidence`: array of incidences. New incidences of `ex` are pushed. 
 """
 findIncidence!(ex, incidence::Array{Incidence,1}) = nothing
-findIncidence!(s::Symbol, incidence::Array{Incidence,1}) = push!(incidence, s)
+findIncidence!(s::Symbol, incidence::Array{Incidence,1}) = if s in [:end]; else push!(incidence, s) end
 findIncidence!(arr::Array{Any,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
 findIncidence!(arr::Array{Expr,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
 function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
