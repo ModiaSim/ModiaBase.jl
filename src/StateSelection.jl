@@ -480,6 +480,8 @@ mutable struct EquationGraph
 
     # Sorted equations
     fullAssignRev::Vector{Int}                     # fullAssignRev[e] = v: If e is a scalar equation system, it is solved for v.
+                                                   # If v = -1, the scalar equation system is not solved directly, but
+                                                   #            as linear equation system (with tearing).
     tearedEquations::Vector{TearedEquations}       # Info about teared equation system
     tearedEquations_indices::Vector{Int}           # teq = tearedEquations_indices[e] is tearedEquations[teq]
     eAST::Vector{Expr}                             # eAST[e] is the AST of equation e
@@ -854,11 +856,11 @@ function addSolvedEquations!(eq::EquationGraph, eSolved::Vector{Int}, vSolved::V
         # Push solved equation to eAST
         v = vSolved[i]
         e = eSolved[i]
-        eq.fullAssignRev[e] = v
         eq.eAST[e] = eq.fc.getSolvedEquationAST(e, v)   # filter_lineno( )
         if eq.log
             printEquations(eq.eAST[e])
         end
+        eq.fullAssignRev[e] = v        
         addFixedVariable!(eq,v)
     end
 
@@ -1000,17 +1002,22 @@ function sortEquations!(eq::EquationGraph)::Nothing
     for blt_i in blt
         @assert(length(blt_i) >= 1)
 
+        solveLinearEquation = true
         if length(blt_i) == 1 # One equation in one unknown
             e = blt_i[1]
 
             # Check
             v = eq.fullAssignRev[e]
-            @assert(e == assign[v])
+            if v != -1              
+                @assert(e == assign[v])
 
-            # Push AST
-            push!(eq.AST, eq.eAST[e])
+                # Push AST
+                push!(eq.AST, eq.eAST[e])
+                solveLinearEquation = false
+            end
+        end
 
-        else # Equation system
+        if solveLinearEquation # Equation system
             # Check that all equations reference the same equation system
             e1 = blt_i[1]
             teq_index = eq.tearedEquations_indices[e1]
@@ -1227,6 +1234,7 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
                 printVariables(eq, vConstraints[i])
             end
 
+            solveLinearEquation = true
             if length(eConstraints[i]) == 1 && length(vConstraints[i]) == 1
                 # One equation in one unknown
                 if i < length(eConstraints)
@@ -1244,9 +1252,19 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
                 end
 
                 # Solve equation for unknown v and add solved equation to AST
-                addSolvedEquations!(eq, eConstraints[i], vConstraints[i])
-
-            else
+                try
+                    addSolvedEquations!(eq, eConstraints[i], vConstraints[i])
+                    solveLinearEquation = false
+                catch
+                    if log
+                        println("Not possible to solve the equation directly. Try so solve it as linear equation:")
+                    end
+                    solveLinearEquation = true
+                    eq.fullAssignRev[eConstraints[i][1]] = -1          
+                end
+            end
+            
+            if solveLinearEquation
                 # N equations in M unknowns (M >= N)
                 @assert(length(vConstraints[i]) >= length(eConstraints[i]))
                 if log
@@ -1339,12 +1357,14 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
                         if i == length(eConstraints)
                             # On highest derivative level:
                             # Assume that the equation system is linear, if at least one of the unknowns is a derivative
-                            linearAssumption = false
-                            for v in vConstraints[i]
-                                if eq.Arev[v] > 0
-                                    linearAssumption = true
-                                end
-                            end
+                            linearAssumption = true  # temporarily
+                                                        
+                            #linearAssumption = false
+                            #for v in vConstraints[i]
+                            #    if eq.Arev[v] > 0
+                            #        linearAssumption = true
+                            #    end
+                            #end
 
                             if linearAssumption
                                 isLinear = true
