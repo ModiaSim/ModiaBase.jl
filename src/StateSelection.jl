@@ -1479,8 +1479,8 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
 
 
     # Print warning, if there are variables with fixed=true that are
-    # explicitly solved for
-    if length(eq.equationInfo.vSolvedWithFixedTrue) > 0
+    # explicitly solved for and log=true
+    if log && length(eq.equationInfo.vSolvedWithFixedTrue) > 0
         showMessage2("The following variables have an 'init' initialization and are explicitly solved for.",
                      details = "Therefore, the 'init' values have no effect, but must exactly match the values,\n"*
                                "computed during initialization. Otherwise this gives a run-time error.\n"*
