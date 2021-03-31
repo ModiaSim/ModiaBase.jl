@@ -35,6 +35,5 @@ using .Symbolic
 
 include("EquationAndStateInfo.jl")
 include("StateSelection.jl")
-include("toStateSpace.jl")
 
 end
