@@ -88,6 +88,18 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ## Release Notes
 
+### Version 0.7.2
+
+- Support of parameters as hierarchical named tuples.
+- Support of array comprehensions.
+- Support of array `end` (e.g. A[3:end])
+- If one equation cannot be solved for one unknown (e.g. since function call),
+  try to solve it as linear equation system.
+- If variables with init values are explicitly solved for, print warning message
+  only if log = true (in TinyModia.simulate! an error occurs, if the init value
+  cannot be respected).
+
+
 ### Version 0.7.1
 
 - Due to version conflicts, added version 0.17 of DataStructures in compat.

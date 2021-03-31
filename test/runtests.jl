@@ -8,8 +8,7 @@ using Test
     include("TestBLTandPantelides.jl")
     include("TestDifferentiate.jl")
     include("TestTearing.jl")    
-    include("TestLinearIntegerEquations.jl")
-    include("TestToStateSpace.jl")    
+    include("TestLinearIntegerEquations.jl")  
 end
 
 end
