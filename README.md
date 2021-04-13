@@ -3,6 +3,8 @@
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://modiasim.github.io/ModiaBase.jl/stable/)
 [![The MIT License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square)](https://github.com/ModiaSim/ModiaBase.jl/blob/master/LICENSE.md)
 
+ModiaBase is part of [ModiaSim](https://modiasim.github.io/docs/). 
+
 ModiaBase provides basic algorithms and functionality that is needed for
 equation-based modeling to transform a (potentially high-index) Differential-Algebraic Equation system (DAE),
 to an Ordinary Differential Equation system in state space form (ODE).
