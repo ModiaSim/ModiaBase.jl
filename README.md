@@ -5,10 +5,12 @@
 
 ModiaBase is part of [ModiaSim](https://modiasim.github.io/docs/). 
 
+ModiaBase is usually used via [Modia](https://github.com/ModiaSim/Modia.jl).
+
 ModiaBase provides basic algorithms and functionality that is needed for
 equation-based modeling to transform a (potentially high-index) Differential-Algebraic Equation system (DAE),
 to an Ordinary Differential Equation system in state space form (ODE).
-It is used by [TinyModia](https://github.com/ModiaSim/TinyModia.jl),
+It is used by [Modia](https://github.com/ModiaSim/Modia.jl),
 but can also be utilized in another context. Especially the following functionality is provided:
 
 - Find a variable assignment of an equation system, in order
@@ -41,18 +43,12 @@ but can also be utilized in another context. Especially the following functional
 
 ## Installation
  
-The package is registered and is installed with (Julia >= 1.5 is required):
+Typically, a user installs [Modia](https://github.com/ModiaSim/Modia.jl) and does not need
+to install ModiaBase separately. If needed, ModiaBase is installed with (Julia >= 1.5 is required):
 
 ```julia
 julia> ]add ModiaBase
 ```
-
-It is recommended to also add the following packages, in order that all tests and examples can be executed in an own environment (`]test ModiaBase` works without adding these packages).
-
-```julia
-julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
-```
-
 
 ## Main Developers
 
