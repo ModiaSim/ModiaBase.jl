@@ -11,7 +11,7 @@ Examples of use can be found in TestSymbolic.jl
 module Symbolic
 
 export removeBlock, makeDerVar, append, prepend, Incidence, findIncidence!, linearFactor, solveEquation, 
-    isLinear, getCoefficients, substitute, removeUnits
+    isLinear, getCoefficients, substitute, removeUnits, resetCounters
 
 using Base.Meta: isexpr
 #using OrderedCollections
@@ -73,12 +73,27 @@ prepend(ex, prefix) = ex
 #prepend(ex::Symbol, prefix::Array{Symbol,1}) = if length(prefix) == 0; ex else prepend(prepend(ex, prefix[end]), prefix[1:end-1]) end
 #prepend(ex::QuoteNode, prefix::Symbol) = Expr(:., prefix, QuoteNode(ex))
 prepend(ex::Symbol, prefix) = if prefix == nothing; ex elseif ex in [:time, :sim, :leq_mode]; ex else Expr(:., prefix, QuoteNode(ex)) end  # TODO: Fix sim
-#prepend(ex::Symbol, prefix::Nothing) = (println("Prepend"); ex)
+prepend(ex::Symbol, prefix::Nothing) = ex
 prepend(arr::Array{Expr,1}, prefix) = [prepend(a, prefix) for a in arr]
 #prepend(dict::OrderedCollections.OrderedDict{Symbol,Expr}, prefix) = OrderedDict([prepend(k, prefix) => prepend(k, prefix) for (k,v) in dict])
 
+nCrossingFunctions = 0
+nClocks = 0
+nSamples = 0
+
+function resetCounters()
+    global nCrossingFunctions
+    global nClocks
+    global nSamples 
+    nCrossingFunctions = 0
+    nClocks = 0
+    nSamples = 0
+end
+
 function prepend(ex::Expr, prefix)
     global nCrossingFunctions
+    global nClocks
+    global nSamples 
     if typeof(prefix) == Array{Any,1} && length(prefix) == 0
         ex
     elseif ex.head == :. && ex.args[1] == :up
@@ -89,7 +104,13 @@ function prepend(ex::Expr, prefix)
             :($prefix.$e)
         elseif ex.head == :call && ex.args[1] == :positive
             nCrossingFunctions += 1
-            :(ModiaMath.positive!(sim, $nCrossingFunctions, $(prepend(ex.args[2], prefix)), $(string(prepend(ex.args[2], prefix))), leq_mode=leq_mode))
+            :(positive(instantiatedModel, $nCrossingFunctions, $(prepend(ex.args[2], prefix)), $(string(prepend(ex.args[2], prefix))), _leq_mode))
+        elseif ex.head == :call && ex.args[1] == :Clock
+            nClocks += 1
+            :(Clock($(prepend(ex.args[2], prefix)), instantiatedModel, $nClocks))
+        elseif ex.head == :call && ex.args[1] == :sample
+            nSamples += 1
+            :(sample($(prepend(ex.args[2], prefix)), $(prepend(ex.args[3], prefix)), instantiatedModel, $nSamples))
         else
             Expr(ex.head, ex.args[1], [prepend(arg, prefix) for arg in ex.args[2:end]]...)
         end
@@ -112,7 +133,7 @@ Traverses an expression and finds incidences of Symbols and der(...)
 * `incidence`: array of incidences. New incidences of `ex` are pushed. 
 """
 findIncidence!(ex, incidence::Array{Incidence,1}) = nothing
-findIncidence!(s::Symbol, incidence::Array{Incidence,1}) = push!(incidence, s)
+findIncidence!(s::Symbol, incidence::Array{Incidence,1}) = begin if s != :(:); push!(incidence, s) end end
 findIncidence!(arr::Array{Any,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
 findIncidence!(arr::Array{Expr,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
 function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
