@@ -22,7 +22,7 @@ Form the derivative of the expressions `ex` with regards to time. Time derivativ
 * `return `der`: Time derivative of ex 
 """
 derivative(ex, timeInvariants=[]) = 0#u"1/s"
-derivative(s::Symbol, timeInvariants=[]) = if s == :time; 1 elseif s in timeInvariants; 0 else :(der($s)) end
+derivative(s::Symbol, timeInvariants=[]) = if s == :time; 1 elseif s in timeInvariants; 0 else :(der($s)) end # 0u"1/s"
 function derivative(ex::Expr, timeInvariants=[])
     if isexpr(ex, :call) && ex.args[1] == :der
         :(der($ex))
