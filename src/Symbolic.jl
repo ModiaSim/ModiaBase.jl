@@ -11,7 +11,7 @@ Examples of use can be found in TestSymbolic.jl
 module Symbolic
 
 export removeBlock, makeDerVar, append, prepend, Incidence, findIncidence!, linearFactor, solveEquation, 
-    isLinear, getCoefficients, substitute, removeUnits, resetCounters
+    isLinear, getCoefficients, substitute, removeUnits, resetCounters, substituteForEvents
 
 using Base.Meta: isexpr
 #using OrderedCollections
@@ -77,6 +77,26 @@ prepend(ex::Symbol, prefix::Nothing) = ex
 prepend(arr::Array{Expr,1}, prefix) = [prepend(a, prefix) for a in arr]
 #prepend(dict::OrderedCollections.OrderedDict{Symbol,Expr}, prefix) = OrderedDict([prepend(k, prefix) => prepend(k, prefix) for (k,v) in dict])
 
+function prepend(ex::Expr, prefix)
+    if typeof(prefix) == Array{Any,1} && length(prefix) == 0
+        ex
+    elseif ex.head == :. && ex.args[1] == :up
+        ex.args[2].value
+    elseif ex.head in [:call, :kw]
+        if false #ex.head == :call && ex.args[1] == :der
+            e = Symbol(ex)
+            :($prefix.$e)
+        else
+            Expr(ex.head, ex.args[1], [prepend(arg, prefix) for arg in ex.args[2:end]]...)
+        end
+    elseif ex.head == :macrocall
+        eval(ex)
+    else
+        Expr(ex.head, [prepend(arg, prefix) for arg in ex.args]...)
+    end
+end
+
+
 nCrossingFunctions = 0
 nClocks = 0
 nSamples = 0
@@ -90,37 +110,29 @@ function resetCounters()
     nSamples = 0
 end
 
-function prepend(ex::Expr, prefix)
+substituteForEvents(ex) = ex
+
+function substituteForEvents(ex::Expr)
     global nCrossingFunctions
     global nClocks
     global nSamples 
-    if typeof(prefix) == Array{Any,1} && length(prefix) == 0
-        ex
-    elseif ex.head == :. && ex.args[1] == :up
-        ex.args[2].value
-    elseif ex.head in [:call, :kw]
-        if false #ex.head == :call && ex.args[1] == :der
-            e = Symbol(ex)
-            :($prefix.$e)
-        elseif ex.head == :call && ex.args[1] == :positive
+    if ex.head in [:call, :kw]
+        if ex.head == :call && ex.args[1] == :positive
             nCrossingFunctions += 1
-            :(positive(instantiatedModel, $nCrossingFunctions, $(prepend(ex.args[2], prefix)), $(string(prepend(ex.args[2], prefix))), _leq_mode))
+            :(positive(instantiatedModel, $nCrossingFunctions, $(substituteForEvents(ex.args[2])), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
         elseif ex.head == :call && ex.args[1] == :Clock
             nClocks += 1
-            :(Clock($(prepend(ex.args[2], prefix)), instantiatedModel, $nClocks))
+            :(Clock($(substituteForEvents(ex.args[2])), instantiatedModel, $nClocks))
         elseif ex.head == :call && ex.args[1] == :sample
             nSamples += 1
-            :(sample($(prepend(ex.args[2], prefix)), $(prepend(ex.args[3], prefix)), instantiatedModel, $nSamples))
+            :(sample($(substituteForEvents(ex.args[2])), $(substituteForEvents(ex.args[3])), instantiatedModel, $nSamples))
         else
-            Expr(ex.head, ex.args[1], [prepend(arg, prefix) for arg in ex.args[2:end]]...)
+            Expr(ex.head, ex.args[1], [substituteForEvents(arg) for arg in ex.args[2:end]]...)
         end
-    elseif ex.head == :macrocall
-        eval(ex)
     else
-        Expr(ex.head, [prepend(arg, prefix) for arg in ex.args]...)
+        Expr(ex.head, [substituteForEvents(arg) for arg in ex.args]...)
     end
 end
-
 
 Incidence = Union{Symbol, Expr}
 
@@ -183,6 +195,8 @@ function linearFactor(ex::Expr, x)
         (ex, 0, true)    
     elseif isexpr(ex, :call) && ex.args[1] == :der
         if ex == x; (0, 1, true) else (ex, 0, true) end
+    elseif isexpr(ex, :call) && ex.args[1] == :positive
+        (ex, 0, true)
     elseif isexpr(ex, :call)
         func = ex.args[1]
         arguments = ex.args[2:end]
