@@ -1220,7 +1220,7 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
         # Analyze all equation sets eConstraints[i] from lowest-order to highest-order derivatives
         for i in eachindex(eConstraints)
             if log
-                println("\n... Equation set $j.$i ..............................")
+                println("\n... Equation set $j.$i (highest derivative level = $j.", length(eConstraints), ") ...................")
                 println("Equations: ")
                 printEquations(eq, eConstraints[i])                
                 println("Unknown variables: ")
@@ -1336,6 +1336,19 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
                     # Check that equation system is linear in the unknowns
                     (isLinear, hasConstantCoefficients) = isLinearEquationSystem!(eq, eConstraints[i], vConstraints[i])
                     if !isLinear
+                        # Temporary fix for Rectifier
+                        if i == length(eConstraints)
+                            # On highest derivative level:
+                            # Assume that the equation system is linear
+                            isLinear = true
+                            hasConstantCoefficients = false
+                            showMessage2("It is heuristically assumed that equation system is linear (although isLinearEquation returned isLinear=false).";
+                                         severity  = WARNING,
+                                         variables = vConstraints[i],
+                                         equations = eConstraints[i])                 
+                        end
+                        
+                    #=
                         if i == length(eConstraints)
                             # On highest derivative level:
                             # Assume that the equation system is linear, if at least one of the unknowns is a derivative
@@ -1355,7 +1368,7 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
                                              equations = eConstraints[i])
                             end
                         end
-
+                     =#
                         if !isLinear
                             showMessage2("Cannot transform to ODE, because equation system is not linear.";
                                         severity  = ERROR,
