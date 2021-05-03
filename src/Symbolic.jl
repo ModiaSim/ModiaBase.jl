@@ -11,7 +11,7 @@ Examples of use can be found in TestSymbolic.jl
 module Symbolic
 
 export removeBlock, makeDerVar, append, prepend, Incidence, findIncidence!, linearFactor, solveEquation, 
-    isLinear, getCoefficients, substitute, removeUnits, resetCounters, substituteForEvents
+    isLinear, getCoefficients, substitute, removeUnits, resetEventCounters, getEventCounters, substituteForEvents
 
 using Base.Meta: isexpr
 #using OrderedCollections
@@ -101,13 +101,20 @@ nCrossingFunctions = 0
 nClocks = 0
 nSamples = 0
 
-function resetCounters()
+function resetEventCounters()
     global nCrossingFunctions
     global nClocks
     global nSamples 
     nCrossingFunctions = 0
     nClocks = 0
     nSamples = 0
+end
+
+function getEventCounters()
+    global nCrossingFunctions
+    global nClocks
+    global nSamples 
+    return (nCrossingFunctions, nClocks, nSamples)
 end
 
 substituteForEvents(ex) = ex
