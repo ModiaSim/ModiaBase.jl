@@ -48,17 +48,20 @@ Recursively converts der(x) to Symbol(:(der(x))) in expression `ex`
 * `ex`: Expression or array of expressions
 * `return `e`: ex with der(x) converted 
 """
-makeDerVar(ex, parameters) = if typeof(ex) in [Symbol, Expr] && ex in parameters; prepend(ex, :(_p)) else ex end
+makeDerVar(ex, parameters, inputs=[]) = if typeof(ex) in [Symbol, Expr] && ex in parameters; prepend(ex, :(_p)) 
+    elseif typeof(ex) in [Symbol, Expr] && ex in inputs; prepend(ex, :(_u)) else ex end
 
-function makeDerVar(ex::Expr, parameters=[])
+function makeDerVar(ex::Expr, parameters=[], inputs=[])
     if ex.head == :call && ex.args[1] == :der
         Symbol(ex)
 	elseif isexpr(ex, :.) && ex in parameters
 		prepend(ex, :(_p))
+	elseif isexpr(ex, :.) && ex in inputs
+		prepend(ex, :(_u))
     elseif ex.head == :.
         Symbol(ex)
     else
-        Expr(ex.head, [makeDerVar(arg, parameters) for arg in ex.args]...)
+        Expr(ex.head, [makeDerVar(arg, parameters, inputs) for arg in ex.args]...)
     end
 end
 
