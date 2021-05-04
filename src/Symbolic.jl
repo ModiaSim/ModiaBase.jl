@@ -75,7 +75,7 @@ prepend(ex, prefix) = ex
 #prepend(ex, prefix::Array{Symbol,1}) = if length(prefix) == 0; ex else prepend(prepend(ex, prefix[end]), prefix[1:end-1]) end
 #prepend(ex::Symbol, prefix::Array{Symbol,1}) = if length(prefix) == 0; ex else prepend(prepend(ex, prefix[end]), prefix[1:end-1]) end
 #prepend(ex::QuoteNode, prefix::Symbol) = Expr(:., prefix, QuoteNode(ex))
-prepend(ex::Symbol, prefix) = if prefix == nothing; ex elseif ex in [:time, :sim, :leq_mode]; ex else Expr(:., prefix, QuoteNode(ex)) end  # TODO: Fix sim
+prepend(ex::Symbol, prefix) = if prefix == nothing; ex elseif ex in [:time, :instantiatedModel, :_leq_mode, :_x]; ex else Expr(:., prefix, QuoteNode(ex)) end
 prepend(ex::Symbol, prefix::Nothing) = ex
 prepend(arr::Array{Expr,1}, prefix) = [prepend(a, prefix) for a in arr]
 #prepend(dict::OrderedCollections.OrderedDict{Symbol,Expr}, prefix) = OrderedDict([prepend(k, prefix) => prepend(k, prefix) for (k,v) in dict])
