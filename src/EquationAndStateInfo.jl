@@ -5,6 +5,7 @@
 # Provide information about the structure of the ODE or DAE equations.
 
 import DataFrames
+import DataStructures
 using  LinearAlgebra
 
 export StateCategory, XD, XALG, XLAMBDA, XMUE
@@ -424,16 +425,17 @@ Return instance `eqInfo` that defines the information for the equation system.
 """
 mutable struct EquationInfo
     status::EquationInfoStatus
-    ode::Bool                                     # = true if ODE model interface, otherwise DAE model interface
-    nz::Int                                       # Number of crossing functions
+    ode::Bool                                      # = true if ODE model interface, otherwise DAE model interface
+    nz::Int                                        # Number of crossing functions
     x_info::Vector{StateElementInfo}
-    residualCategories::Vector{ResidualCategory}  # If ode=true, length(residualCategories) = 0
-                                                  # If ode=false, residualCategories[j] is the ResidualCategory of residual[j] 
+    residualCategories::Vector{ResidualCategory}   # If ode=true, length(residualCategories) = 0
+                                                   # If ode=false, residualCategories[j] is the ResidualCategory of residual[j] 
     linearEquations::Vector{Tuple{Vector{String},Vector{Int},Int,Bool}}
     vSolvedWithFixedTrue::Vector{String}
-    nx::Int                                       # = length(x) or -1 if not yet known
-    x_infoByIndex::Vector{Int}                    # i = x_infoByIndex[j] -> x_info[i] 
-                                                  # or empty vector, if not yet known.   
+    nx::Int                                        # = length(x) or -1 if not yet known
+    x_infoByIndex::Vector{Int}                     # i = x_infoByIndex[j] -> x_info[i] 
+                                                   # or empty vector, if not yet known.  
+    x_dict::DataStructures.OrderedDict{String,Int} # x_dict[x_name] returns the index of x_name with respect to x_info                                                  
     defaultParameterAndStartValues::Union{AbstractDict,Nothing}
     ResultType    
     ResultTypeHasFloatType::Bool
@@ -455,10 +457,34 @@ EquationInfo(; status                = MANUAL,
                EquationInfo(status, ode, nz, x_info, 
                             residualCategories, linearEquations, 
                             vSolvedWithFixedTrue, nx, x_infoByIndex,
+                            DataStructures.OrderedDict{String,Int}(),
                             defaultParameterAndStartValues,
                             ResultType, ResultTypeHasFloatType)
 
-                                
+
+"""
+    updateEquationInfo!(eqInfo::EquationInfo)
+    
+Set eqInfo.x_dict, eqInfo.nx and eqInfo.x_info[:].startIndex
+"""
+function updateEquationInfo!(eqInfo::EquationInfo)::Nothing
+    x_dict = eqInfo.x_dict
+    startIndex = 1
+    for (i, xi_info) in enumerate(eqInfo.x_info)
+        x_dict[xi_info.x_name] = i
+        xi_info.startIndex = startIndex
+        startIndex += xi_info.length
+    end
+    eqInfo.nx = startIndex - 1
+    return nothing
+end
+
+get_x_startIndexAndLength(eqInfo::EquationInfo, name::String) = begin
+    xe_info = eqInfo.x_info[ eqInfo.x_dict[name] ]
+    (xe_info.startIndex, xe_info.length)
+end
+            
+            
 function Base.show(io::IO, eqInfo::EquationInfo; indent=4)
     indentation  = repeat(" ", indent)
     indentation2 = repeat(" ", 2*indent)
