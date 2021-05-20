@@ -1369,10 +1369,10 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
                             if linearAssumption
                                 isLinear = true
                                 hasConstantCoefficients = false
-                                showMessage2("It is heuristically assumed that equation system is linear (although isLinearEquation returned isLinear=false).";
-                                             severity  = WARNING,
-                                             variables = vConstraints[i],
-                                             equations = eConstraints[i])
+                                #showMessage2("It is heuristically assumed that equation system is linear (although isLinearEquation returned isLinear=false).";
+                                #             severity  = WARNING,
+                                #             variables = vConstraints[i],
+                                #             equations = eConstraints[i])
                             end
                         end
 
