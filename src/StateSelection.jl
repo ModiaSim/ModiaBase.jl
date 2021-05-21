@@ -1495,10 +1495,10 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
     if length(ODE_states) == 0
         if log
             println("Model has only explicitly solved algebraic variables.\n",
-                    "Added a dummy differential equation der(x[1]) = -x[1], x[1](t0) = 0")
+                    "Added a dummy differential equation der(_dummy_x) = -_dummy_x, _dummy_x(t0) = 0")
         end
         push!(eq.equationInfo.x_info, ModiaBase.StateElementInfo(
-              "", :(), "", :(), XD, 1, "", false, NaN, false))
+              "_dummy_x", :(), "der(_dummy_x)", :(), XD, 1, "", false, NaN, false))
     end
 
     if log
