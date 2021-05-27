@@ -103,21 +103,25 @@ end
 nCrossingFunctions = 0
 nClocks = 0
 nSamples = 0
+previousVar = []
 
 function resetEventCounters()
     global nCrossingFunctions
     global nClocks
     global nSamples 
+	global previousVar
     nCrossingFunctions = 0
     nClocks = 0
     nSamples = 0
+	previousVar = []
 end
 
 function getEventCounters()
     global nCrossingFunctions
     global nClocks
     global nSamples 
-    return (nCrossingFunctions, nClocks, nSamples)
+	global previousVar
+    return (nCrossingFunctions, nClocks, nSamples, previousVar)
 end
 
 substituteForEvents(ex) = ex
@@ -126,6 +130,7 @@ function substituteForEvents(ex::Expr)
     global nCrossingFunctions
     global nClocks
     global nSamples 
+	global previousVar
     if ex.head in [:call, :kw]
         if ex.head == :call && ex.args[1] == :positive
             nCrossingFunctions += 1
@@ -136,6 +141,10 @@ function substituteForEvents(ex::Expr)
         elseif ex.head == :call && ex.args[1] == :sample
             nSamples += 1
             :(sample($(substituteForEvents(ex.args[2])), $(substituteForEvents(ex.args[3])), instantiatedModel, $nSamples))
+        elseif ex.head == :call && ex.args[1] == :previous
+            push!(previousVar, ex.args[2])
+            nPrevious = length(previousVar)
+            :(previous($(ex.args[2]), $(substituteForEvents(ex.args[3])), instantiatedModel, $nPrevious))
         else
             Expr(ex.head, ex.args[1], [substituteForEvents(arg) for arg in ex.args[2:end]]...)
         end
@@ -165,7 +174,9 @@ function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
         if ex.args[1] == :der
             push!(incidence, ex) # der(x)
             push!(incidence, ex.args[2]) # x
-        else
+        elseif ex.args[1] == :previous
+            [findIncidence!(e, incidence) for e in ex.args[3:end]] # skip operator/function name and first argument
+		else
             [findIncidence!(e, incidence) for e in ex.args[2:end]] # skip operator/function name
         end
     elseif ex.head == :.
@@ -205,7 +216,7 @@ function linearFactor(ex::Expr, x)
         (ex, 0, true)    
     elseif isexpr(ex, :call) && ex.args[1] == :der
         if ex == x; (0, 1, true) else (ex, 0, true) end
-    elseif isexpr(ex, :call) && ex.args[1] == :positive
+    elseif isexpr(ex, :call) && ex.args[1] in [:positive, :previous]
         (ex, 0, true)
     elseif isexpr(ex, :call)
         func = ex.args[1]
