@@ -139,11 +139,11 @@ function substituteForEvents(ex::Expr)
     if ex.head in [:call, :kw]
         if ex.head == :call && ex.args[1] == :positive
             nCrossingFunctions += 1
-            :(positive(instantiatedModel, $nCrossingFunctions, $(substituteForEvents(ex.args[2])), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
+            :(positive(instantiatedModel, $nCrossingFunctions, ustrip($(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
         elseif ex.head == :call && ex.args[1] == :Clock
             @assert 2<=length(ex.args)<=3 "The Clock function takes one or two arguments: $ex"
              nClocks += 1
-            :(Clock($(substituteForEvents(ex.args[2:end])...), instantiatedModel, $nClocks))
+            :(Clock(ustrip($(substituteForEvents(ex.args[2:end])...)), instantiatedModel, $nClocks))
         elseif ex.head == :call && ex.args[1] == :sample
             nSamples += 1
             :(sample($(substituteForEvents(ex.args[2])), $(substituteForEvents(ex.args[3])), instantiatedModel, $nSamples))
@@ -151,7 +151,7 @@ function substituteForEvents(ex::Expr)
             if length(ex.args) == 2
                 push!(preVars, ex.args[2])
                 nPre = length(preVars)
-                :(pre($(ex.args[2]), instantiatedModel, $nPre))
+                :(previous($(ex.args[2]), instantiatedModel, $nPre))
             elseif length(ex.args) == 3
                 push!(previousVars, ex.args[2])
                 nPrevious = length(previousVars)
@@ -162,7 +162,7 @@ function substituteForEvents(ex::Expr)
         elseif ex.head == :call && ex.args[1] == :after
             # Temporarily: Convert time event to state event
             nCrossingFunctions += 1
-            :(positive(instantiatedModel, $nCrossingFunctions, time - $(substituteForEvents(ex.args[2])), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
+            :(positive(instantiatedModel, $nCrossingFunctions, ustrip(time - $(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
         else
             Expr(ex.head, ex.args[1], [substituteForEvents(arg) for arg in ex.args[2:end]]...)
         end
