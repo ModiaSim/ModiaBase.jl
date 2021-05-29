@@ -103,25 +103,29 @@ end
 nCrossingFunctions = 0
 nClocks = 0
 nSamples = 0
-previousVar = []
+previousVars = []
+preVars = []
 
 function resetEventCounters()
     global nCrossingFunctions
     global nClocks
     global nSamples 
-	global previousVar
+	global previousVars
+    global preVars
     nCrossingFunctions = 0
     nClocks = 0
     nSamples = 0
-	previousVar = []
+	previousVars = []
+    preVars = []
 end
 
 function getEventCounters()
     global nCrossingFunctions
     global nClocks
     global nSamples 
-	global previousVar
-    return (nCrossingFunctions, nClocks, nSamples, previousVar)
+	global previousVars
+    global preVars
+    return (nCrossingFunctions, nClocks, nSamples, previousVars, preVars)
 end
 
 substituteForEvents(ex) = ex
@@ -131,6 +135,7 @@ function substituteForEvents(ex::Expr)
     global nClocks
     global nSamples 
 	global previousVar
+    global preVars
     if ex.head in [:call, :kw]
         if ex.head == :call && ex.args[1] == :positive
             nCrossingFunctions += 1
@@ -142,9 +147,17 @@ function substituteForEvents(ex::Expr)
             nSamples += 1
             :(sample($(substituteForEvents(ex.args[2])), $(substituteForEvents(ex.args[3])), instantiatedModel, $nSamples))
         elseif ex.head == :call && ex.args[1] == :previous
-            push!(previousVar, ex.args[2])
-            nPrevious = length(previousVar)
-            :(previous($(ex.args[2]), $(substituteForEvents(ex.args[3])), instantiatedModel, $nPrevious))
+            if length(ex.args) == 2
+                push!(preVars, ex.args[2])
+                nPre = length(preVars)
+                :(pre($(ex.args[2]), instantiatedModel, $nPre))
+            elseif length(ex.args) == 3
+                push!(previousVars, ex.args[2])
+                nPrevious = length(previousVars)
+                :(previous($(ex.args[2]), $(substituteForEvents(ex.args[3])), instantiatedModel, $nPrevious))
+            else
+                error("The previous function takes one or two arguments")
+            end
         else
             Expr(ex.head, ex.args[1], [substituteForEvents(arg) for arg in ex.args[2:end]]...)
         end
