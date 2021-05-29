@@ -151,7 +151,7 @@ function substituteForEvents(ex::Expr)
             if length(ex.args) == 2
                 push!(preVars, ex.args[2])
                 nPre = length(preVars)
-                :(previous($(ex.args[2]), instantiatedModel, $nPre))
+                :(pre($(ex.args[2]), instantiatedModel, $nPre))
             elseif length(ex.args) == 3
                 push!(previousVars, ex.args[2])
                 nPrevious = length(previousVars)
