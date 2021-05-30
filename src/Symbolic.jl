@@ -101,6 +101,7 @@ end
 
 
 nCrossingFunctions = 0
+nAfter = 0
 nClocks = 0
 nSamples = 0
 previousVars = []
@@ -108,11 +109,13 @@ preVars = []
 
 function resetEventCounters()
     global nCrossingFunctions
+    global nAfter
     global nClocks
     global nSamples 
 	global previousVars
     global preVars
     nCrossingFunctions = 0
+    nAfter = 0
     nClocks = 0
     nSamples = 0
 	previousVars = []
@@ -121,17 +124,19 @@ end
 
 function getEventCounters()
     global nCrossingFunctions
+    global nAfter
     global nClocks
     global nSamples 
 	global previousVars
     global preVars
-    return (nCrossingFunctions, nClocks, nSamples, previousVars, preVars)
+    return (nCrossingFunctions, nAfter, nClocks, nSamples, previousVars, preVars)
 end
 
 substituteForEvents(ex) = ex
 
 function substituteForEvents(ex::Expr)
     global nCrossingFunctions
+    global nAfter
     global nClocks
     global nSamples 
 	global previousVar
@@ -143,7 +148,11 @@ function substituteForEvents(ex::Expr)
         elseif ex.head == :call && ex.args[1] == :Clock
             @assert 2<=length(ex.args)<=3 "The Clock function takes one or two arguments: $ex"
              nClocks += 1
-            :(Clock(ustrip($(substituteForEvents(ex.args[2:end])...)), instantiatedModel, $nClocks))
+             if length(ex.args) == 2
+                :(Clock(ustrip($(substituteForEvents(ex.args[2]))), instantiatedModel, $nClocks))
+             else
+                :(Clock(ustrip($(substituteForEvents(ex.args[2]))), ustrip($(substituteForEvents(ex.args[3]))), instantiatedModel, $nClocks))
+             end
         elseif ex.head == :call && ex.args[1] == :sample
             nSamples += 1
             :(sample($(substituteForEvents(ex.args[2])), $(substituteForEvents(ex.args[3])), instantiatedModel, $nSamples))
@@ -151,18 +160,20 @@ function substituteForEvents(ex::Expr)
             if length(ex.args) == 2
                 push!(preVars, ex.args[2])
                 nPre = length(preVars)
-                :(pre($(ex.args[2]), instantiatedModel, $nPre))
+                :(pre(instantiatedModel, $nPre))
             elseif length(ex.args) == 3
                 push!(previousVars, ex.args[2])
                 nPrevious = length(previousVars)
-                :(previous($(ex.args[2]), $(substituteForEvents(ex.args[3])), instantiatedModel, $nPrevious))
+                :(previous($(substituteForEvents(ex.args[3])), instantiatedModel, $nPrevious))
             else
                 error("The previous function takes one or two arguments: $ex")
             end
         elseif ex.head == :call && ex.args[1] == :after
-            # Temporarily: Convert time event to state event
             nCrossingFunctions += 1
-            :(positive(instantiatedModel, $nCrossingFunctions, ustrip(time - $(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
+            :(positive(instantiatedModel, $nCrossingFunctions, ustrip(time-$(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
+#            after(instantiatedModel, nr, t, tAsString, leq_mode) 
+#            nAfter += 1
+#            :(after(instantiatedModel, $nAfter, ustrip($(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
         else
             Expr(ex.head, ex.args[1], [substituteForEvents(arg) for arg in ex.args[2:end]]...)
         end
