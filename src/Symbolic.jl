@@ -172,8 +172,8 @@ function substituteForEvents(ex::Expr)
             nCrossingFunctions += 1
             :(positive(instantiatedModel, $nCrossingFunctions, ustrip(time-$(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
 #            after(instantiatedModel, nr, t, tAsString, leq_mode) 
-#            nAfter += 1
-#            :(after(instantiatedModel, $nAfter, ustrip($(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
+            nAfter += 1
+            :(after(instantiatedModel, $nAfter, ustrip($(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
         else
             Expr(ex.head, ex.args[1], [substituteForEvents(arg) for arg in ex.args[2:end]]...)
         end
