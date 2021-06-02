@@ -172,10 +172,14 @@ function substituteForEvents(ex::Expr)
             else
                 error("The previous function presently takes two arguments: $ex")
             end
+        elseif ex.head == :call && ex.args[1] in [:initial, :terminal]
+            if length(ex.args) == 1
+                :($(ex.args[1])(instantiatedModel))
+            else
+                error("The $(ex.args[1]) function don't take any arguments: $ex")
+            end
         elseif ex.head == :call && ex.args[1] == :after
-            nCrossingFunctions += 1
-            :(positive(instantiatedModel, $nCrossingFunctions, ustrip(time-$(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
-#            after(instantiatedModel, nr, t, tAsString, leq_mode) 
+            # after(instantiatedModel, nr, t, tAsString, leq_mode) 
             nAfter += 1
             :(after(instantiatedModel, $nAfter, ustrip($(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
         else
