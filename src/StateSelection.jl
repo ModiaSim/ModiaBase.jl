@@ -898,9 +898,9 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
         i2 = i1 + v_length - 1
         indexRange = i1 == i2 ? :($i1) :  :( $i1:$i2 )
         if v_unit == ""
-            push!(for_body, :( $v_name = _leq.vTear_value[$indexRange] ) )
+            push!(for_body, :( $v_name = _leq_mode.vTear_value[$indexRange] ) )
         else
-            expr = :( $v_name = _leq.vTear_value[$indexRange]*@u_str($v_unit) )
+            expr = :( $v_name = _leq_mode.vTear_value[$indexRange]*@u_str($v_unit) )
             push!(for_body, expr)
         end
         push!(vAssigned_names, v_name)
@@ -919,7 +919,7 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
     # Add residual equations
     #   leq.residuals[i] = < equation in residual form >
     for (i,e) in enumerate(eq.eResiduals)
-        push!(for_body, eq.fc.getResidualEquationAST(e, :(_leq.residual_value[$i]) ))
+        push!(for_body, eq.fc.getResidualEquationAST(e, :(_leq_mode.residual_value[$i]) ))
     end
 
     # Generate LinearEquations data structure
@@ -929,10 +929,14 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
     leq_index = length(eq.equationInfo.linearEquations)
     for_loop = quote
         local $(vAssigned_names...)
-        _leq = _m.linearEquations[$leq_index]
-        for _leq_mode in ModiaBase.LinearEquationsIterator(_leq, _m.isInitial)
+        _leq_mode = _m.linearEquations[$leq_index]
+        for _leq_evaluate in ModiaBase.LinearEquationsIterator(_leq_mode, _m.isInitial, _m.time)
+            if !_leq_evaluate
+                break
+            end
             $(for_body...)
         end
+        _leq_mode = nothing
     end
 
     if eq.log

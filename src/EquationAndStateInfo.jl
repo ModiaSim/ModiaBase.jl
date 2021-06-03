@@ -51,6 +51,8 @@ Type of a residual (see also [`StateCategory`](@ref) for the type of a state).
 
 
 
+const niter_max = 20  # Maximum number of fixed-point iterations to solve A*x = b
+
 """
     leq = LinearEquations{FloatType}(vTear_names::Vector{String},  vTear_lengths::Vector{Int},
                                      nResiduals::Int, A_is_constant::Bool)
@@ -73,20 +75,33 @@ mutable struct LinearEquations{FloatType <: Real}
     residuals::Vector{FloatType}    # Values of the residuals FloatType vector; length(residuals) = sum(residuals_length) = sum(vTear_lengths)   
     residual_value::AbstractVector  # Values of the residual variables ::Vector{Any}, length(residual_values) = nResiduals
     
+    # Iteration status of for-loop
+    mode::Int       # Operational mode (see function iterate below)
+    niter::Int      # Current number of iterations in the fix point iteration scheme
+    niter_max::Int  # Maximum number of iterations
+    success::Bool   # = true, if solution of A*x = b is successfully computed
+                    # = false, if solution is not computed; continue with fix point iteration
+                    
+    # For warning message if niter > niter_max
+    inconsistentPositive::Vector{String}
+    inconsistentNegative::Vector{String}   
+    
     # Constructed during initialization
     residual_unitRanges::Vector{UnitRange{Int}} # residuals[residual_unitRanges[i]] = residual_value[i], if residual is a vector
     residual_indices::Vector{Int}               # residuals[residual_indices[i]] = residual_value[i], if residual is a scalar
     luA::LU{FloatType,Array{FloatType,2}}       # lu-Decomposition of A
-
+    
     function LinearEquations{FloatType}(vTear_names::Vector{String}, vTear_lengths::Vector{Int},
                                         nResiduals::Int, A_is_constant::Bool) where {FloatType <: Real}
         @assert(length(vTear_names) > 0)
         @assert(length(vTear_names) == length(vTear_lengths))
         nx = sum(vTear_lengths)
         @assert(nx > 0)
+        state = -1
         new(A_is_constant, vTear_names, vTear_lengths, zeros(FloatType,nx), nResiduals, 
             zeros(FloatType,nx,nx), zeros(FloatType,nx), zeros(FloatType,nx),
-            Vector{Any}(undef,nResiduals), fill(0:0,nResiduals), fill(0,nResiduals))
+            Vector{Any}(undef,nResiduals), -4, -1, niter_max, false, String[], String[],
+            fill(0:0,nResiduals), fill(0,nResiduals))
     end
 end
 LinearEquations(args...) = LinearEquations{Float64}(args...)
@@ -100,17 +115,21 @@ Return instance of a struct to iterate over LinearEquations with Base.iterate(le
 with the following for-loop:
 
 ```julia
-function getModelResiduals!(solverModel::ModiaBase.SolverModel, t, x, der_x, residuals, w)::Nothing
+function getDerivatives!(_der_x, _x, _m, _time)::Nothing
+    _leq::Union{Nothing,LinearEquations{FloatType}} = nothing
     ...
-    leq = solverModel.linearEquations[..]
-    for i in LinearEquationsIterator(leq,isInitial)
-        v_tear1 = leq.vTear_value[1:3]
-        v_tear2 = leq.vTear_value[4]
+    _leq = _m.linearEquations[<nr>]   # leq::LinearEquations{FloatType}
+    for _leq_evaluate = LinearEquationsIterator(_leq, _m.isInitial, _m.time) 
+        if !_leq_evaluate
+            break
+        end
+        v_tear1 = _leq.vTear_value[1:3]
+        v_tear2 = _leq.vTear_value[4]
         ...
-        v_solved1 = f(v_tear1, v_tear2, ...)
+        v_solved1 = f(v_tear1, v_tear2, ..., positive(v_tear1,.., _leq))
         v_solved2 = f(v_tear1, v_tear2, ..., v_solved1)
         ...
-        leq.residuals[..] = < residual equation(v_tear1,...) >
+        _leq.residuals[..] = < residual equation(v_tear1,...) > 
     end
     ...
 end
@@ -119,15 +138,137 @@ end
 struct LinearEquationsIterator{FloatType <: Real}
     leq::LinearEquations{FloatType}
     isInitial::Bool
+    time
 end
 
-function Base.iterate(iterator::LinearEquationsIterator{FloatType}, state=0) where {FloatType <: Real}
-    if isnothing(state)
-        return nothing
-    end
+const ncalls = [0]
+
+function Base.iterate(iterator::LinearEquationsIterator{FloatType}, mode::Int = -3) where {FloatType <: Real}
+    #=
+        for item in iterator
+           # body
+        end
         
+    is translated to
+    
+        next = iterate(iterator)
+        while next != nothing
+            (item, mode) = next
+            # body
+            next = iterate(iterator, mode)
+        end
+    
+    
+    iterate(iterator,mode=0) to solve "residuals = A*x - b" where
+    A and b can be functions of positive(c_i'*x - d_i). In this case this system
+    is solved by a fixed point iteration scheme, that is "A*x = b" is solved
+    until potentially present positive(c_i'*x - d_i) calls are consistent to x.
+    Iteration is terminated after 20 iterations if no convergence is found.
+    In this case a warning message is triggered and simulation is continued
+    (it might be that simulation is still successful, even if "x" and
+    positive(..) are temporarily not consistent to each other).
+
+    Note, the current values of A,x,b,residuals are stored in iterator.leq.
+    If A is fixed after initialization (leq.A_is_constant = true), then A is computed
+    only once at initialization, the LU decomposition of A is stored in leq
+    and used in subsequent calls to solve the equation system.
+    
+    
+        On input (leq = iterator.leq; x = leq.vTear_value):
+        
+        mode = -3: # Initialize fixed point iteration
+                   leq.niter   = 0
+                   leq.success = false 
+                   goto mode = 0
+                   
+        mode =  0: # Start next (fixed point) iteration 
+                   x .= 0
+                   leq.mode = 0
+                   return (true, 1)  # next mode = 1 (compute "b" after the next iteration)
+                
+        mode = 1: b    = -residuals  # Compute "b". 
+                  x[1] = 1.0
+                  leq.mode = 1
+                  return (true, 2)   # next mode = 2 (compute A[:,1] after the next iteration)
+                
+        mode > 1: j      = mode - 1
+                  A[:,j] = residuals + b  # Compute A[:,j]. 
+                  x[j]   = 0.0
+                  if j < length(x)
+                      x[j+1]   = 1.0
+                      leq.mode = mode
+                      return (true, mode+1)  # next mode = mode + 1 (compute A[:,j+1] after the next iteration)
+                  elseif j == length(x)
+                      x = A\b            # Solve linear equation system A*x = b for x.
+                      leq.mode    = -1   # Compute all variables IN the next iteration as function of x
+                      leq.niter  += 1    # Increment number of iterations to solve A*x = b
+                      leq.success = true # Terminate for-loop at the beginning of the next iteration,
+                                         # provided no positive(..) call changes its value.
+                                         # (leq.success is set to false in positive(..), if the return value changes).
+                      return (true, -2)  # next mode = -2 (either terminate for-loop or re-initialize the next solver-iteration)
+                  end
+                  
+       mode = -2: if leq.success
+                     return (false, 0)   # Terminate for-loop
+                  elseif leq.niter > 20
+                     <warning>
+                     return (false, 0)   # Terminate for-loop
+                  end
+                  goto mode = 0          # Re-initialize next solver-iteration
+    =# 
+    
+    #=
+    println("... 1, mode = $mode, time = $(iterator.time)")
+    if iterator.isInitial
+        ncalls[1] = 0
+    else
+        ncalls[1] += 1
+        if ncalls[1] > 20000
+        error("... too many calls")
+        end
+    end
+    =#
+    
+    
     leq = iterator.leq
-    x   = leq.vTear_value
+    if mode == -3 
+        # Initialize fixed point iteration
+        leq.niter   = 0
+        leq.success = false 
+        empty!(leq.inconsistentPositive)
+        empty!(leq.inconsistentNegative)        
+        mode = 0
+        
+    elseif mode == -2
+        # Either terminate fixed point iteration, or start a new iteration
+        if leq.success
+            return (false,0)
+        elseif leq.niter > niter_max
+            str = ""
+            if length(leq.inconsistentPositive) > 0
+                str = str * "positive(expr) is inconsistent for expr = $(leq.inconsistentPositive)."
+            end
+            if length(leq.inconsistentNegative) > 0
+                if length(str) > 0
+                    str = str * "\n"
+                end
+                str = str * "negative(expr) is inconsistent for expr = $(leq.inconsistentNegative)."
+            end
+            @warn "At time = $(iterator.time), no consistent solution found for mixed linear equation system.\n" * 
+                  "Simulation is continued although some variables might not be correct at this time instant.\n$str"
+            return (false,0)
+        end
+        mode = 0
+    end
+    
+    x = leq.vTear_value
+    if mode == 0
+        # Re-initialize iteration variables and compute b-vector after next iteration
+        x .= 0
+        leq.mode = 0
+        return (true,1)
+    end
+
     nx  = length(x)
     A   = leq.A
     b   = leq.b
@@ -136,7 +277,11 @@ function Base.iterate(iterator::LinearEquationsIterator{FloatType}, state=0) whe
     residual_unitRanges = leq.residual_unitRanges
     residual_indices    = leq.residual_indices
 
-    if state == 1
+    if mode < 1 || mode > nx+1
+        @goto ERROR
+    end
+    
+    if iterator.isInitial && mode == 1
         # Construct unit ranges for the residual variables vector to copy values into the residuals vector
         j = 1
         for (i, res_value) in enumerate(residual_value)
@@ -155,88 +300,84 @@ function Base.iterate(iterator::LinearEquationsIterator{FloatType}, state=0) whe
         end
         if j-1 != nx
             k = j-1
-            error("The length of the residuals vector (= $k) is not equal to the length of the vTear_value vector (= $nx)")
-        end
-    end
-    
-    if state > 0
-        # Copy residual variable values to residuals vector
-        index = 0
-        for (i, res_value) in enumerate(residual_value)
-            index = residual_indices[i]
-            if index > 0
-                residuals[index] = res_value
-            else
-                residuals[residual_unitRanges[i]] = res_value
-            end
+            #@error "The length of the residuals vector (= $k) is not equal to the length of the vTear_value vector (= $nx)"
         end
     end
 
+    # Copy residual variable values to residuals vector
+    index = 0
+    for (i, res_value) in enumerate(residual_value)
+        index = residual_indices[i]
+        if index > 0
+            residuals[index] = res_value
+        else
+            residuals[residual_unitRanges[i]] = res_value
+        end
+    end
 
-    if state == 0
-        # Re-initialize iteration variables and compute b-vector   
-        x .= 0
-
-    elseif (!leq.A_is_constant &&                       state <= nx+1) ||   # A is not constant; compute it always
-           ( leq.A_is_constant && iterator.isInitial && state <= nx+1)      # A is constant; compute it if isInitial=true
-           
-        # Handle first the code that has to be executed after state-1 and then the code for the actual state value
-        if state == 1
-            # Terminating code for state = 0 (residuals = A*x - b -> b = -residuals)
+    if !leq.A_is_constant || iterator.isInitial  # A is not constant or A is constant and isInitial = true
+        if mode == 1
+            # Terminating code for mode = 0 (residuals = A*x - b -> b = -residuals)
             for i = 1:nx
                 b[i] = -residuals[i]
             end
         else
-            # Terminating code for state = 1..nx (residuals = A*x - b -> A[:,j] = residuals + b)
-            j = state-1
+            # Terminating code for mode = 1..nx (residuals = A*x - b -> A[:,j] = residuals + b)
+            j = mode-1
             for i = 1:nx
                 A[i,j] = residuals[i] + b[i]
             end
             x[j] = 0
         end
-
-        if state <= nx
-            # Start code for state = 1..nx
-            x[state] = 1
-
-        elseif state == nx+1
-            # Solve linear equation system
-            if length(x) == 1       
-                x[1] = b[1]/A[1,1]
-                if !isfinite(x[1])
-                    error("Linear scalar equation system is singular resulting in: ", leq.vTear_names[1], " = ", x[1])
-                end
-            else
-                x .= b
-                leq.luA = lu!(A)
-                ldiv!(leq.luA, x)
-            end
-            return (-1, nothing)
+    
+        if mode <= nx
+            # Start code for mode = 1..nx
+            x[mode] = 1
+            leq.mode = mode
+            return (true, mode+1)
         end
         
-    elseif leq.A_is_constant && !iterator.isInitial && state <= 1   # A is constant; do not compute it if isInitial=false
-        # Terminating code for state = 0 (residuals = A*x - b -> b = -residuals)#
+        # mode == nx+1; Solve linear equation system
+        if length(x) == 1       
+            x[1] = b[1]/A[1,1]
+            if !isfinite(x[1])
+                error("Linear scalar equation system is singular resulting in: ", leq.vTear_names[1], " = ", x[1])
+            end
+        else
+            x .= b
+            leq.luA = lu!(A)
+            ldiv!(leq.luA, x)
+        end
+        
+    elseif leq.A_is_constant && !iterator.isInitial && mode == 1  # isInitial=false, LU decomposition of A is available in leq.luA    
         for i = 1:nx
             x[i] = -residuals[i]
         end 
-        
+            
         # Solve linear equation system
         if length(x) == 1
             x[1] = x[1]/A[1,1]
             if !isfinite(x[1])
                 error("Linear scalar equation system is singular resulting in: ", leq.vTear_names[1], " = ", x[1])
             end
-            
         else        
             ldiv!(leq.luA, x)
         end
-        return(-1, nothing)
         
     else
-        return nothing
-    end
+        @goto ERROR
+    end   
+   
+    # Linear equation system solved
+    leq.mode    = -1   # Compute all variables IN the next iteration as function of x
+    leq.niter  += 1    # Increment number of iterations to solve A*x = b
+    leq.success = true # Terminate for-loop at the beginning of the next iteration,
+                       # provided no positive(..) call changes its value.
+                       # (leq.success is set to false in positive(..), if the return value changes).
+    return (true, -2)  # next mode = -2 (either terminate for-loop or re-initialize the next solver-iteration)            
 
-    return (state, state+1)
+    @label ERROR
+    @error "Should not occur (Bug in file ModiaBase/src/EquationAndStateInfo.jl,\nmode = $mode; vTear = $(leq.vTear_names))."
 end
 
 
