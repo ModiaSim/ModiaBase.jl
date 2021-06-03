@@ -80,8 +80,10 @@ function derivative(ex::Expr, timeInvariants=[])
                 end
                 if length(sum) > 1
                     Expr(:call, :+, sum...)
-                else
+                elseif length(sum) == 1
                     sum[1]
+                else
+                    0
                 end
             else
                 :($d * $(derArguments[1]))

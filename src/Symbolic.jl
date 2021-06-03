@@ -156,22 +156,30 @@ function substituteForEvents(ex::Expr)
         elseif ex.head == :call && ex.args[1] == :sample
             nSamples += 1
             :(sample($(substituteForEvents(ex.args[2])), $(substituteForEvents(ex.args[3])), instantiatedModel, $nSamples))
-        elseif ex.head == :call && ex.args[1] == :previous
+        elseif ex.head == :call && ex.args[1] == :pre
             if length(ex.args) == 2
                 push!(preVars, ex.args[2])
                 nPre = length(preVars)
                 :(pre(instantiatedModel, $nPre))
-            elseif length(ex.args) == 3
+            else
+                error("The pre function takes one arguments: $ex")
+            end
+        elseif ex.head == :call && ex.args[1] == :previous
+            if length(ex.args) == 3
                 push!(previousVars, ex.args[2])
                 nPrevious = length(previousVars)
                 :(previous($(substituteForEvents(ex.args[3])), instantiatedModel, $nPrevious))
             else
-                error("The previous function takes one or two arguments: $ex")
+                error("The previous function presently takes two arguments: $ex")
+            end
+        elseif ex.head == :call && ex.args[1] in [:initial, :terminal]
+            if length(ex.args) == 1
+                :($(ex.args[1])(instantiatedModel))
+            else
+                error("The $(ex.args[1]) function don't take any arguments: $ex")
             end
         elseif ex.head == :call && ex.args[1] == :after
-            nCrossingFunctions += 1
-            :(positive(instantiatedModel, $nCrossingFunctions, ustrip(time-$(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
-#            after(instantiatedModel, nr, t, tAsString, leq_mode) 
+            # after(instantiatedModel, nr, t, tAsString, leq_mode) 
             nAfter += 1
             :(after(instantiatedModel, $nAfter, ustrip($(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
         else
@@ -203,7 +211,7 @@ function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
         if ex.args[1] == :der
             push!(incidence, ex) # der(x)
             push!(incidence, ex.args[2]) # x
-        elseif ex.args[1] == :previous
+        elseif ex.args[1] in [:pre, :previous]
             [findIncidence!(e, incidence) for e in ex.args[3:end]] # skip operator/function name and first argument
 		else
             [findIncidence!(e, incidence) for e in ex.args[2:end]] # skip operator/function name
