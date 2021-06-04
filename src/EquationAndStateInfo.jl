@@ -717,7 +717,26 @@ Return the names of the states defined in `equationInfo` as a Vector of strings.
 get_stateNames(eqInfo::EquationInfo) = String[xi_info.x_name for xi_info in eqInfo.x_info]
 
 
+"""
+    names = get_xNames(eqInfo::EquationInfo)
+    
+Return the names of all elements of the x-vector as a vector of strings.
+"""
+function get_xNames(eqInfo::EquationInfo)::Vector{String}
+    xNames = Vector{String}(undef, eqInfo.nx)
+    for xe_info in eqInfo.x_info
+        if xe_info.length == 1
+            xNames[xe_info.startIndex] = xe_info.x_name
+        else
+            for i = 1:xe_info.length
+                xNames[xe_info.startIndex+i-1] = xe_info.x_name*"["*string(i)*"]"
+            end
+        end
+    end
+    return xNames
+end
 
+                
 
 #=
 """
