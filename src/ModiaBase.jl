@@ -16,10 +16,6 @@ const Date    = "2021-03-08"
 
 using Unitful
 
-export stripUnit
-stripUnit(v) = ustrip(upreferred(v))
-
-
 include("LinearIntegerEquations.jl")
 
 include("BLTandPantelidesUtilities.jl")
