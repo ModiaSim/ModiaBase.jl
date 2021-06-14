@@ -2,113 +2,6 @@
 # Copyright 2020-2021, DLR Institute of System Dynamics and Control
 # Author: Martin Otter, DLR-SR
 
-"""
-    sets_G = findIndependentSets(G, nv)
-    
-Given a bipartite Graph `G::Vector{Vector{Int}}` and the number of variables `nv::Int`,
-return a vector `sets_G::Vector{Vector{Int}}`, where `sets_G[i]` contains an Integer-vector
-of `G-elements` that have no variable in common with all the other elements in `sets_G`.
-
-# Example
-```julia
-G = [[1,2,3],    # equation 1
-     [4,5],      # equation 2
-     [6,7,8],    # equation 3
-     [7,9],      # equation 4
-     [1,5]]      # equation 5
-
-sets_G = findIndependentSets(G, 9)
-
-#=
-sets_G = [ [1,2,5],  # set 1 contains equations 1,2,5
-           [3,4] ]   # set 2 contains equations 3,4
-=#
-```
-"""
-function findIndependentSets(G::Vector{Vector{Int}}, nv::Int)
-    #println("\n... Bipartite graph G:")
-    #for (i, G_i) in enumerate(G)
-    #    println("G[$i]: $G_i")
-    #end
-    
-    sets_G        = Vector{Int}[]   # sets_G[i][j] = k, if G[k] is in Integer set i
-    sets_vars     = Set{Int}[]      # sets_vars[i] contains the variables of Integer set i in a Set.
-    sets_v        = fill(0, nv)     # sets_v[j] = i, if variable v_j is in Integer set i. If sets_v[j] = 0, variable v_j is not yet in a set.
-    sets_to_merge = Set{Int}()      # Collect all sets that must be merged
-    zero_G        = fill(0,0)
-    zero_vars     = Set{Int}() 
-    for (i, G_i) in enumerate(G)
-        # Check if a variable of G_i is in a set.
-        #print("... process G[$i]: ")
-        empty!(sets_to_merge)
-        for v in G_i
-            if sets_v[v] > 0 
-                # Variable v is in a set. 
-                push!(sets_to_merge, sets_v[v])
-            end
-        end
-        #println("sets_to_merge = ", collect(sets_to_merge))
-
-        if length(sets_to_merge) == 0
-            # No variable of G_i is yet in a set. Start a new set
-            push!(sets_G, [i])
-            push!(sets_vars, Set{Int}(G_i))
-            set_i = length(sets_G)            
-            #println("    new set $set_i = [$i]")
-        else
-            # Variables are already in at least one set
-            set_i = first(sets_to_merge) 
-            if length(sets_to_merge) > 0
-                # Variables are already in two or more sets: Merge the sets together with G_i
-                main_set_G    = sets_G[set_i]
-                main_set_vars = sets_vars[set_i]       
-                for set_j in sets_to_merge
-                    if set_j != set_i
-                        append!(main_set_G   , sets_G[set_j])
-                        union!( main_set_vars, sets_vars[set_j])
-                        #println("    merged set $set_j in set $set_i = $(sets_G[set_i])")
-                        for v in sets_vars[set_j]
-                            sets_v[v] = set_i
-                        end
-                        sets_G[set_j]    = zero_G
-                        sets_vars[set_j] = zero_vars
-                        #println("    removed set $set_j")
-                    end
-                end
-            end
-
-            # Store equation G_i and all variables of G_i in this set.
-            push!(sets_G[set_i], i)
-            push!(sets_vars[set_i], G_i...)  
-            #println("    modified set $set_i = ", sets_G[set_i])
-        end
-        
-        # Store the information that G_i[:] is in set set_i
-        for v in G_i
-            sets_v[v] = set_i
-        end
-    end
-    
-    # Remove zero entries in set_G and sort every set
-    nsets = count(i->length(i) > 0, sets_G)
-    sets_G2    = fill(zero_G   , nsets)
-    sets_vars2 = fill(zero_vars, nsets) 
-    j = 0
-    for (i, v) in enumerate(sets_G)
-        if length(v) > 0
-            j += 1
-            sets_G2[j] = v
-            sets_vars2[j] = sets_vars[i]
-        end
-    end    
-    #sets_G    = sets_G[   findall(i->length(i) > 0, sets_G)]
-    #sets_vars = sets_vars[findall(i->length(i) > 0, sets_G)]
-    for sets_G_i in sets_G2
-        sort!(sets_G_i)
-    end  
-    return (sets_G2, sets_vars2)
-end   
-
 #=
 Algorithm to exactly process linear Integer equations and hereby removing underdeterminism, overdeterminism,
 and state constraints that are not structurally visible, as well as eliminating simple equations. 
@@ -540,133 +433,7 @@ function printLinearIntegerEquations(Gint, eInt, GcInt, var_name::Function; rk=(
     return ne
 end
     
-
-"""
-    (vEliminated, vProperty, nvArbitrary, redundantEquations) = 
-        simplifyOneLinearIntegerEquationSet!(G, Gint, eInt, GcInt, GcInt2, vActive1, vActive2, AvarRev, vProperty, vShouldBeSolved, var_name; logSets = false)
-        
-"""
-function simplifyOneLinearIntegerEquationSet!(G, Gint, vars, eInt, GcInt, GcInt2, vActive1, vActive2, AvarRev, 
-                                              vProperty, vShouldBeSolved, var_name; logSets = false)    
-                                              
-    # First transformation to upper trapezoidal form:
-    #    Diagonal entries: Variables v that must be solved from the linear Integer equations 
-    #println("\n... before upperTrapezoidal!:")
-    #println("     Gint  = $Gint")
-    #println("     GcInt2 = $GcInt2")     
-    rk1 = upperTrapezoidal!(Gint, eInt, GcInt, GcInt2, vActive1, 1)
     
-        # Eliminate variables that must be solved from the linear Integer equations
-        # but are not diagonal entries (= variables can be arbitrarily set)
-        vSolved     = Set{Int}([Gint[i][1] for i = 1:rk1])
-        
-        vArbitrarilySetToZero = setdiff(vShouldBeSolved, vSolved)   
-        for v in vArbitrarilySetToZero
-            vProperty[v] = 0
-        end
-        vEliminated = Int[]
-        
-        if logSets
-            println("\n    After first transformation to trapezoidal form (eliminate variables that must be solved):")
-            printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1,0,0))
-        end
-       
-    # Second transformation to upper trapezoidal form: Ignore potential states 
-    rk2 = upperTrapezoidal!(Gint, eInt, GcInt, GcInt2, vActive2, rk1+1)
-    
-    if logSets
-        println("\n    After second transformation to trapezoidal form (ignore potential states):")
-        printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1,rk2,0))
-    end    
-    
-    # Third transformation to upper trapezoidal form: All remaining variables are potential states
-    for v in vars
-        vActive2[v] = true
-    end
-    #fill!(vActive2, true)  
-    rk3 = upperTrapezoidal!(Gint, eInt, GcInt, GcInt2, vActive2, rk2+1)
-    #println("\n... after upperTrapezoidal!:")
-    #println("     Gint  = $Gint")
-    #println("     GcInt2 = $GcInt2")    
-    #println("     rk1 = $rk1, rk2 = $rk2, rk3 = $rk3")
-     
-    if logSets
-        println("\n    After third transformation to trapezoidal form (eliminate potential states):")
-        printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1, rk2, rk3))
-    end 
-    
-    # Simplify equations from equation rk2 upto equation 1
-    for k = rk2:-1:1
-        simplifyOneEquation!(Gint[k], GcInt2[k], AvarRev, vEliminated, vProperty)        
-    end
- 
-    if logSets
-        println("\n    After alias elimination:")
-        printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1, rk2, rk3))
-    end 
-    
-    #println("\n... after equation simplification:")
-    #println("     Gint  = $Gint")
-    #println("     GcInt2 = $GcInt2")    
-    #println("     vEliminated = ", vEliminated)
-    #println("     vProperty[vEliminated] = ",  vProperty[vEliminated])   
-
-    # Update GcInt (use GcInt2[i] if it has not more unknowns as the corresponding GcInt[i] equation)
-    equationsRemoved = false
-    for i = 1:rk2
-        if length(GcInt2[i]) <= length(GcInt[i])
-            # Use transformed equation
-            GcInt[i] = GcInt2[i]
-        else
-            # Use original equation
-            Gint[i] = G[ eInt[i] ]
-            equationRemoved = simplifyOneEquation!(Gint[i], GcInt[i], AvarRev, vEliminated, vProperty)
-            equationsRemoved = equationsRemoved || equationRemoved
-        end
-    end
-  
-    if equationsRemoved
-        # Simplify equations, until no equation is removed anymore
-        equationRemoved = false
-        while true
-            for i = 1:rk2
-                if length(Gint[i]) > 0
-                    equationRemoved = simplifyOneEquation!(Gint[i], GcInt[i], AvarRev, vEliminated, vProperty)
-                    if equationRemoved
-                        break
-                    end
-                end
-            end
-            if !equationRemoved
-                break
-            end
-        end
-    end  
-    
-    # For constraint equations and for removed equations, use transformed equations
-    for i = rk2+1:length(eInt)
-        GcInt[i] = GcInt2[i]
-    end
-    
-    if logSets
-        println("\n    Final, simplified equations:")
-        printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1, rk2, rk3))
-    end 
-    
-    
-    # Update G
-    for (i,e) in enumerate(eInt)
-        G[e] = Gint[i]
-    end
-
-    redundantEquations = rk3 < length(eInt) ? eInt[rk3+1:end] : Int[]
-        
-    return (vEliminated, vArbitrarilySetToZero, redundantEquations)
-end
-
-
-
-
 """
     (vEliminated, vProperty, nvArbitrary, redundantEquations) = 
         simplifyLinearIntegerEquations!(G, eInt, GcInt, Avar)
@@ -787,19 +554,13 @@ function simplifyLinearIntegerEquations!(G, eInt::Vector{Int}, GcInt, Avar::Vect
     end
     
     # Save all variables with vActive1[v] = true in vShouldBeSolved
-    vShouldBeSolved = Set{Int}(findall(vActive1))
+    vShouldBeSolved = findall(vActive1)
         
+
     # Construct the bi-partite graph of the linear Integer equations
     # (a deepcopy of the relevant part of G) 
     Gint = deepcopy(G[eInt])
     
-    # Construct a deepcopy of GcInt (this copy is modified by the transformation to upper trapezoidal form)
-    GcInt2 = deepcopy(GcInt)
-    
-    # Determine independent sets (sets of equations that have no variable in common)
-    (sets_Gint, sets_vars) = findIndependentSets(Gint, nv)
-    println("Number of independent sets: ", length(sets_Gint))
-
     if log
         println("\n+++ Remove singularities")
         println("    Linear Integer equations:")
@@ -818,41 +579,120 @@ function simplifyLinearIntegerEquations!(G, eInt::Vector{Int}, GcInt, Avar::Vect
             end
         end  
     end
- 
-
-    # Simplify
-#=    
+    
+    
+    # Construct a deepcopy of GcInt (this copy is modified by the transformation to upper trapezoidal form)
+    GcInt2 = deepcopy(GcInt)
+   
+    # First transformation to upper trapezoidal form:
+    #    Diagonal entries: Variables v that must be solved from the linear Integer equations 
+    #println("\n... before upperTrapezoidal!:")
+    #println("     Gint  = $Gint")
+    #println("     GcInt2 = $GcInt2")     
+    rk1 = upperTrapezoidal!(Gint, eInt, GcInt, GcInt2, vActive1, 1)
+    
+        # Eliminate variables that must be solved from the linear Integer equations
+        # but are not diagonal entries (= variables can be arbitrarily set)
+        vSolved     = [Gint[i][1] for i = 1:rk1]
+        vEliminated = setdiff(vShouldBeSolved, vSolved)
+        vProperty   = fill(IS_PRESENT, nv)    
+        for v in vEliminated
+            vProperty[v] = 0
+        end
+        nvArbitrary = length(vEliminated)
         
-    (vEliminated, nvArbitrary, redundantEquations) = 
-       simplifyOneLinearIntegerEquationSet!(G, Gint, eInt, GcInt, GcInt2, vActive1, vActive2, AvarRev, vProperty, vShouldBeSolved, var_name; logSets = false)
-=#
-
-
-    vEliminated           = Int[]
-    vArbitrarilySetToZero = Int[]     
-    redundantEquations    = Int[]
-    vProperty = fill(IS_PRESENT, nv)     
+        if log
+            println("\n    After first transformation to trapezoidal form (eliminate variables that must be solved):")
+            printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1,0,0))
+        end
+       
+    # Second transformation to upper trapezoidal form: Ignore potential states 
+    rk2 = upperTrapezoidal!(Gint, eInt, GcInt, GcInt2, vActive2, rk1+1)
+    
+    if log
+        println("\n    After second transformation to trapezoidal form (ignore potential states):")
+        printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1,rk2,0))
+    end    
+    
+    # Third transformation to upper trapezoidal form: All remaining variables are potential states
+    fill!(vActive2, true)  
+    rk3 = upperTrapezoidal!(Gint, eInt, GcInt, GcInt2, vActive2, rk2+1)
+    #println("\n... after upperTrapezoidal!:")
+    #println("     Gint  = $Gint")
+    #println("     GcInt2 = $GcInt2")    
+    #println("     rk1 = $rk1, rk2 = $rk2, rk3 = $rk3")
+     
+    if log
+        println("\n    After third transformation to trapezoidal form (eliminate potential states):")
+        printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1, rk2, rk3))
+    end 
+    
+    # Simplify equations from equation rk2 upto equation 1
+    for k = rk2:-1:1
+        simplifyOneEquation!(Gint[k], GcInt2[k], AvarRev, vEliminated, vProperty)        
+    end
  
-    for (set_i, Gint_i) in enumerate(sets_Gint)
-        vars_i = sets_vars[set_i]
-        vShouldBeSolved_i = intersect(vars_i, vShouldBeSolved) 
-        GintB   = Gint[Gint_i]
-        eIntB   = eInt[Gint_i]
-        GcIntB  = GcInt[Gint_i]
-        GcInt2B = GcInt2[Gint_i]
-        result = simplifyOneLinearIntegerEquationSet!(G, GintB, vars_i, eIntB, GcIntB, GcInt2B, 
-                                                      vActive1, vActive2, AvarRev, vProperty, vShouldBeSolved_i, var_name; logSets = log)
-        Gint[Gint_i] = GintB
-        eInt[Gint_i] = eIntB
-        GcInt[Gint_i] = GcIntB
-        GcInt2[Gint_i] = GcInt2B
-        append!(vEliminated          , result[1])
-        append!(vArbitrarilySetToZero, result[2])        
-        append!(redundantEquations   , result[3])
+    if log
+        println("\n    After alias elimination:")
+        printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1, rk2, rk3))
+    end 
+    
+    #println("\n... after equation simplification:")
+    #println("     Gint  = $Gint")
+    #println("     GcInt2 = $GcInt2")    
+    #println("     vEliminated = ", vEliminated)
+    #println("     vProperty[vEliminated] = ",  vProperty[vEliminated])   
+
+    # Update GcInt (use GcInt2[i] if it has not more unknowns as the corresponding GcInt[i] equation)
+    equationsRemoved = false
+    for i = 1:rk2
+        if length(GcInt2[i]) <= length(GcInt[i])
+            # Use transformed equation
+            GcInt[i] = GcInt2[i]
+        else
+            # Use original equation
+            Gint[i] = G[ eInt[i] ]
+            equationRemoved = simplifyOneEquation!(Gint[i], GcInt[i], AvarRev, vEliminated, vProperty)
+            equationsRemoved = equationsRemoved || equationRemoved
+        end
+    end
+  
+    if equationsRemoved
+        # Simplify equations, until no equation is removed anymore
+        equationRemoved = false
+        while true
+            for i = 1:rk2
+                if length(Gint[i]) > 0
+                    equationRemoved = simplifyOneEquation!(Gint[i], GcInt[i], AvarRev, vEliminated, vProperty)
+                    if equationRemoved
+                        break
+                    end
+                end
+            end
+            if !equationRemoved
+                break
+            end
+        end
+    end  
+    
+    # For constraint equations and for removed equations, use transformed equations
+    for i = rk2+1:length(eInt)
+        GcInt[i] = GcInt2[i]
+    end
+    
+    if log
+        println("\n    Final, simplified equations:")
+        printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1, rk2, rk3))
+    end 
+    
+    
+    # Update G
+    for (i,e) in enumerate(eInt)
+        G[e] = Gint[i]
     end
 
-    nvArbitrary = length(vArbitrarilySetToZero)
-    pushfirst!(vEliminated, vArbitrarilySetToZero...)
+    redundantEquations = rk3 < length(eInt) ? eInt[rk3+1:end] : Int[]
+        
     return (vEliminated, vProperty, nvArbitrary, redundantEquations)
 end
 
