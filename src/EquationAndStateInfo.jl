@@ -272,6 +272,7 @@ function Base.iterate(iterator::LinearEquationsIterator{FloatType}, mode::Int = 
     nx  = length(x)
     A   = leq.A
     b   = leq.b
+    nResiduals          = leq.nResiduals    
     residuals           = leq.residuals
     residual_value      = leq.residual_value
     residual_unitRanges = leq.residual_unitRanges
@@ -284,7 +285,8 @@ function Base.iterate(iterator::LinearEquationsIterator{FloatType}, mode::Int = 
     if iterator.isInitial && mode == 1
         # Construct unit ranges for the residual variables vector to copy values into the residuals vector
         j = 1
-        for (i, res_value) in enumerate(residual_value)
+        for i = 1:nResiduals
+            res_value = residual_value[i]        
             if typeof(res_value) <: Number
                 residual_indices[i] = j
                 j = j+1
@@ -298,16 +300,18 @@ function Base.iterate(iterator::LinearEquationsIterator{FloatType}, mode::Int = 
                 j = k+1
             end
         end
+        
         if j-1 != nx
-            k = j-1
-            #@error "The length of the residuals vector (= $k) is not equal to the length of the vTear_value vector (= $nx)"
+            len_res = j-1
+            error("The length of the residuals vector (= $len_res) is not equal to the length of the vTear_value vector (= $nx)")
         end
     end
 
     # Copy residual variable values to residuals vector
     index = 0
-    for (i, res_value) in enumerate(residual_value)
-        index = residual_indices[i]
+    for i = 1:nResiduals
+        res_value = residual_value[i]
+        index     = residual_indices[i]
         if index > 0
             residuals[index] = res_value
         else
