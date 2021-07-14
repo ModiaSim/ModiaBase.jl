@@ -20,7 +20,6 @@ using Unitful
 using Measurements
 using MonteCarloMeasurements
 
-
 """
     e = removeBlock(ex)
 
@@ -40,6 +39,20 @@ function removeBlock(ex::Expr)
     end
 end
 
+prependPar(ex, prefix, parameters=[], inputs=[]) = ex
+
+function prependPar(ex::Symbol, prefix, parameters=[], inputs=[]) 
+    if prefix == nothing; ex elseif ex in [:time, :instantiatedModel, :_leq_mode, :_x]; ex else Expr(:ref, prefix, QuoteNode(ex)) end
+end
+
+function prependPar(ex::Expr, prefix, parameters=[], inputs=[])
+    if isexpr(ex, :.)
+        Expr(:ref, prependPar(ex.args[1], prefix, parameters, inputs), QuoteNode(ex.args[2].value))
+    else
+        Expr(ex.head, [prependPar(arg, prefix, parameters, inputs) for arg in ex.args]...)
+    end
+end
+
 """
     e = makeDerVar(ex)
 
@@ -48,20 +61,29 @@ Recursively converts der(x) to Symbol(:(der(x))) in expression `ex`
 * `ex`: Expression or array of expressions
 * `return `e`: ex with der(x) converted 
 """
-makeDerVar(ex, parameters, inputs=[]) = if typeof(ex) in [Symbol, Expr] && ex in parameters; prepend(ex, :(_p)) 
-    elseif typeof(ex) in [Symbol, Expr] && ex in inputs; prepend(ex, :(_p)) else ex end
+makeDerVar(ex, parameters, inputs, evaluateParameters=false) = if typeof(ex) in [Symbol, Expr] && 
+    ( ex in keys(parameters) || ex in keys(inputs) ); prependPar(ex, :(_p), parameters, inputs) 
+    else ex end
 
-function makeDerVar(ex::Expr, parameters=[], inputs=[])
+function makeDerVar(ex::Expr, parameters, inputs, evaluateParameters=false)
     if ex.head == :call && ex.args[1] == :der
         Symbol(ex)
-	elseif isexpr(ex, :.) && ex in parameters
-		prepend(ex, :(_p))
-	elseif isexpr(ex, :.) && ex in inputs
-		prepend(ex, :(_p))
+	elseif isexpr(ex, :.) && ex in keys(parameters)
+        if evaluateParameters
+            parameters[ex]
+        else
+            prependPar(ex, :(_p), parameters, inputs)
+        end
+	elseif isexpr(ex, :.) && ex in keys(inputs)
+        if evaluateParameters
+            inputs[ex]
+        else
+            prependPar(ex, :(_p), parameters, inputs)
+        end
     elseif ex.head == :.
         Symbol(ex)
     else
-        Expr(ex.head, [makeDerVar(arg, parameters, inputs) for arg in ex.args]...)
+        Expr(ex.head, [makeDerVar(arg, parameters, inputs, evaluateParameters) for arg in ex.args]...)
     end
 end
 
@@ -106,6 +128,7 @@ nClocks = 0
 nSamples = 0
 previousVars = []
 preVars = []
+holdVars = []
 
 function resetEventCounters()
     global nCrossingFunctions
@@ -114,22 +137,25 @@ function resetEventCounters()
     global nSamples 
 	global previousVars
     global preVars
+    global holdVars
     nCrossingFunctions = 0
     nAfter = 0
     nClocks = 0
     nSamples = 0
 	previousVars = []
     preVars = []
+    holdVars = []
 end
 
 function getEventCounters()
     global nCrossingFunctions
     global nAfter
     global nClocks
-    global nSamples 
+    global nSamples
 	global previousVars
     global preVars
-    return (nCrossingFunctions, nAfter, nClocks, nSamples, previousVars, preVars)
+    global holdVars
+    return (nCrossingFunctions, nAfter, nClocks, nSamples, previousVars, preVars, holdVars)
 end
 
 substituteForEvents(ex) = ex
@@ -141,6 +167,7 @@ function substituteForEvents(ex::Expr)
     global nSamples 
 	global previousVar
     global preVars
+    global holdVars
     if ex.head in [:call, :kw]
         if ex.head == :call && ex.args[1] == :positive
             nCrossingFunctions += 1
@@ -171,6 +198,15 @@ function substituteForEvents(ex::Expr)
                 :(previous($(substituteForEvents(ex.args[3])), instantiatedModel, $nPrevious))
             else
                 error("The previous function presently takes two arguments: $ex")
+            end
+        elseif ex.head == :call && ex.args[1] == :hold
+            push!(holdVars, ex.args[2])
+            nHold = length(holdVars)
+            if length(ex.args) == 3
+                :(hold($(substituteForEvents(ex.args[2])), $(substituteForEvents(ex.args[3])), instantiatedModel, $nHold))
+            else
+#                error("The hold function takes two or three arguments, hold(v, clock) or hold(expr, start, clock) : $ex")
+                error("The hold function takes two arguments, hold(v, clock): $ex")
             end
         elseif ex.head == :call && ex.args[1] in [:initial, :terminal]
             if length(ex.args) == 1
@@ -245,8 +281,8 @@ Finds the linear `factor` and `rest` if `ex` is `linear` with regards to `x` (ex
 * `return (rest, factor, linear)`:  
 """
 linearFactor(ex, x) = (ex, 0, true)
-linearFactor(ex::Symbol, x) =  if ex == x; (0, 1, true) else (ex, 0, true) end
-function linearFactor(ex::Expr, x)
+linearFactor(ex::Symbol, x::Incidence) =  if ex == x; (0, 1, true) else (ex, 0, true) end
+function linearFactor(ex::Expr, x::Incidence)
     if ex.head == :block
         linearFactor(ex.args[1], x)    
     elseif ex.head == :macrocall && ex.args[1] == Symbol("@u_str")
@@ -374,7 +410,7 @@ Tests if `ex` is `linear` with regards to `x` (ex == factor*x + rest) and checks
 * `ex`: Expression
 * `return (linear, constant)` 
 """
-function isLinear(equ::Expr, x)
+function isLinear(equ::Expr, x::Incidence)
     (rest, factor, linear) = linearFactor(equ, x)
     (linear, typeof(factor) != Expr)
 end
@@ -389,7 +425,7 @@ If `ex` is `linear` with regards to all `incidence` (Symbols and der(...)), the 
 * `return (incidence, coefficients, rest, linear)` 
 """
 
-function getCoefficients(ex)
+function getCoefficients(ex::Expr)
     incidence = Incidence[]
     findIncidence!(ex, incidence)
     coefficients = []
@@ -400,10 +436,12 @@ function getCoefficients(ex)
         findIncidence!(coefficients, crossIncidence)
         if x in crossIncidence
             linear = false
+            break
         end
         (rest, factor, linearRest) = linearFactor(rest, x)
         if !linearRest
             linear = false
+            break
         end
         push!(coefficients, factor)
     end
@@ -411,6 +449,10 @@ function getCoefficients(ex)
 end
 
 substitute(substitutions, ex) = begin nex = get(substitutions, ex, ex); if nex != ex; nex = substitute(substitutions, nex) else nex end; nex end 
+
+substitute(substitutions, ex::Vector{Symbol}) = [substitute(substitutions, e) for e in ex]
+
+substitute(substitutions, ex::Vector{Expr}) = [substitute(substitutions, e) for e in ex]
 
 substitute(substitutions, ex::MonteCarloMeasurements.StaticParticles) = ex
 

@@ -27,18 +27,18 @@ using ..BLTandPantelidesUtilities
 const log = false
 
 """
-    function augmentPath!(G, i, assign, vColour, eColour, vActive)
+    function augmentPath!(G, i, assign, vColour, eColour, vPassive)
 Construction of augmenting path
 
 Reference:
 Pantelides, C.: The consistent initialization of differential-algebraic systems. SIAM Journal
 of Scientific and Statistical Computing, 9(2), pp. 213–231 (1988). 
 """
-function augmentPath!(G, i, assign, vColour, eColour, vActive)
+function augmentPath!(G, i, assign, vColour, eColour, vPassive)
     # returns pathFound
     # assign: assign[j] contains the E-node to which V-node j is assigned or 0 if V-node j not assigned
     # i: E-node
-    # vActive: set to false has the same effect as deleting V-node and corresponding edges
+    # vPassive: set to != 0 has the same effect as deleting V-node and corresponding edges
     # j: V-node
 
     if log
@@ -50,7 +50,7 @@ function augmentPath!(G, i, assign, vColour, eColour, vActive)
     
     # If a V-node j exists such that edge (i-j) exists and assign[j] == 0
     for j in G[i]
-        if vActive[j] && assign[j] == 0
+        if vPassive[j] == 0 && assign[j] == 0
             pathFound = true
             assign[j] = i
             return pathFound
@@ -59,10 +59,10 @@ function augmentPath!(G, i, assign, vColour, eColour, vActive)
   
     # For every j such that edge (i-j) exists and j is uncoloured
     for j in G[i]
-        if vActive[j] && !vColour[j]
+        if vPassive[j] == 0 && !vColour[j]
             vColour[j] = true
             k = assign[j]
-            pathFound = augmentPath!(G, k, assign, vColour, eColour, vActive)
+            pathFound = augmentPath!(G, k, assign, vColour, eColour, vPassive)
     
             if pathFound 
                 assign[j] = i
@@ -74,11 +74,11 @@ function augmentPath!(G, i, assign, vColour, eColour, vActive)
 end
 
 
-function checkAssign(assign, VSizes, VTypes, ESizes, ETypes, equationsInfix, variableNames, A, vActive=[a == 0 for a in A])
+function checkAssign(assign, VSizes, VTypes, ESizes, ETypes, equationsInfix, variableNames, A, vPassive=A)
     println("Checking assignment")
     assignmentOK = true
     for j in 1:length(assign)
-        if vActive[j]
+        if vPassive[j] == 0
             i = assign[j]
             if i > 0 && VSizes[j] != ESizes[i]
                 assignmentOK = false
@@ -114,10 +114,11 @@ function matching(G, M, vActive=fill(true, M))
     assign::Array{Int,1} = fill(0, M)
     eColour::Array{Bool,1} = fill(false, length(G))
     vColour::Array{Bool,1} = fill(false, M)
+    vPassive::Array{Int,1} = [if va; 0 else 1 end for va in vActive]
     for i in 1:length(G)
         fill!(eColour, false)
         fill!(vColour, false)
-        pathFound = augmentPath!(G, i, assign, vColour, eColour, vActive)
+        pathFound = augmentPath!(G, i, assign, vColour, eColour, vPassive)
     end
     return assign
 end
@@ -142,6 +143,8 @@ of Scientific and Statistical Computing, 9(2), pp. 213–231 (1988).
 function pantelides!(G, M, A)
     assign::Array{Int,1} = fill(0, M)
     B::Array{Int,1} = fill(0, length(G))
+    eColour::Array{Bool,1} = fill(false, length(G))
+    vColour::Array{Bool,1} = fill(false, M)
     N = length(G)
     N2 = N
     for k in 1:N2
@@ -149,11 +152,19 @@ function pantelides!(G, M, A)
         i = k
         while !pathFound
             # Delete all V-nodes with A[.] != 0 and all their incidence edges from the graph
-            vActive::Array{Bool,1} = [a == 0 for a in A]
             # Designate all nodes as "uncoloured"
-            eColour::Array{Bool,1} = fill(false, length(G))
-            vColour::Array{Bool,1} = fill(false, M)
-            pathFound = augmentPath!(G, i, assign, vColour, eColour, vActive)
+            if length(eColour) == length(G)
+                fill!(eColour, false)
+            else
+                eColour = fill(false, length(G))
+            end
+            if length(vColour) == length(M)
+                fill!(vColour, false)
+            else
+                vColour = fill(false, M)
+            end
+
+            pathFound = augmentPath!(G, i, assign, vColour, eColour, A)
             if !pathFound
                 if log
                     println("\nDifferentiate:")
