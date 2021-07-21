@@ -10,11 +10,11 @@ Examples of use can be found in TestSymbolic.jl
 """
 module Symbolic
 
-export removeBlock, makeDerVar, append, prepend, Incidence, findIncidence!, linearFactor, solveEquation, 
+export removeBlock, removeQuoteNode, makeDerVar, append, prepend, Incidence, findIncidence!, linearFactor, solveEquation, 
     isLinear, getCoefficients, substitute, removeUnits, resetEventCounters, getEventCounters, substituteForEvents
 
 using Base.Meta: isexpr
-#using OrderedCollections
+using OrderedCollections
 using ModiaBase.Simplify
 using Unitful
 using Measurements
@@ -29,14 +29,31 @@ Remove :block with LineNumberNode from expressions
 * `return `e`: ex with :block removed 
 """
 removeBlock(ex) = ex
-#removeBlock(arr::Array{Any,1}) = [removeBlock(a) for a in arr]
+removeBlock(arr::Array{Any,1}) = [removeBlock(a) for a in arr]
 removeBlock(arr::Array{Expr,1}) = [removeBlock(a) for a in arr]
+removeBlock(q::QuoteNode) = q 
+    # if typeof(q.value) == Symbol; q.value else q end # begin print("QuoteNode: "); dump(q); q; end # q.value
+removeBlock(d::OrderedDict) = OrderedDict{Symbol, Any}([(k,removeBlock(v)) for (k,v) in d])
+
 function removeBlock(ex::Expr)
-    if isexpr(ex, :block) && typeof(ex.args[1]) == LineNumberNode && length(ex.args) == 2
+    if isexpr(ex, :block) && length(ex.args) == 2 && typeof(ex.args[1]) == LineNumberNode 
         ex.args[2]
+    elseif isexpr(ex, :block) && length(ex.args) == 3 && typeof(ex.args[1]) == LineNumberNode && typeof(ex.args[2]) == LineNumberNode 
+        ex.args[3]
     else
         Expr(ex.head, [removeBlock(arg) for arg in ex.args]...)
     end
+end
+
+removeQuoteNode(ex) = ex
+removeQuoteNode(arr::Array{Any,1}) = [removeQuoteNode(a) for a in arr]
+removeQuoteNode(arr::Array{Expr,1}) = [removeQuoteNode(a) for a in arr]
+removeQuoteNode(q::QuoteNode) = q.value
+    # if typeof(q.value) == Symbol; q.value else q end # begin print("QuoteNode: "); dump(q); q; end # q.value
+removeQuoteNode(d::OrderedDict) = OrderedDict{Symbol, Any}([(k,removeQuoteNode(v)) for (k,v) in d])
+
+function removeQuoteNode(ex::Expr)
+    Expr(ex.head, [removeQuoteNode(arg) for arg in ex.args]...)
 end
 
 prependPar(ex, prefix, parameters=[], inputs=[]) = ex
@@ -237,7 +254,7 @@ Traverses an expression and finds incidences of Symbols and der(...)
 * `incidence`: array of incidences. New incidences of `ex` are pushed. 
 """
 findIncidence!(ex, incidence::Array{Incidence,1}) = nothing
-findIncidence!(s::Symbol, incidence::Array{Incidence,1}) = begin if s != :(:); push!(incidence, s) end end
+findIncidence!(s::Symbol, incidence::Array{Incidence,1}) = begin if ! (s in [:(:), :end]); push!(incidence, s) end end
 findIncidence!(arr::Array{Any,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
 findIncidence!(arr::Array{Expr,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
 function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
