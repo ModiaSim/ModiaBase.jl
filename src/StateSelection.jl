@@ -26,7 +26,7 @@ export StateSelectionFunctions
 export showCodeWithoutComments
 
 
-#using DataStructures
+#using OrderedCollections
 using ModiaBase
 using ModiaBase.BLTandPantelides
 

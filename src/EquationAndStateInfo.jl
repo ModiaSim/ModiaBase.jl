@@ -5,7 +5,7 @@
 # Provide information about the structure of the ODE or DAE equations.
 
 import DataFrames
-import DataStructures
+import OrderedCollections
 using  LinearAlgebra
 
 export StateCategory, XD, XALG, XLAMBDA, XMUE
@@ -543,7 +543,7 @@ mutable struct EquationInfo
     nx::Int                                        # = length(x) or -1 if not yet known
     x_infoByIndex::Vector{Int}                     # i = x_infoByIndex[j] -> x_info[i] 
                                                    # or empty vector, if not yet known.  
-    x_dict::DataStructures.OrderedDict{String,Int} # x_dict[x_name] returns the index of x_name with respect to x_info                                                  
+    x_dict::OrderedCollections.OrderedDict{String,Int} # x_dict[x_name] returns the index of x_name with respect to x_info                                                  
     defaultParameterAndStartValues::Union{AbstractDict,Nothing}
     ResultType    
     ResultTypeHasFloatType::Bool
@@ -565,7 +565,7 @@ EquationInfo(; status                = MANUAL,
                EquationInfo(status, ode, nz, x_info, 
                             residualCategories, linearEquations, 
                             vSolvedWithFixedTrue, nx, x_infoByIndex,
-                            DataStructures.OrderedDict{String,Int}(),
+                            OrderedCollections.OrderedDict{String,Int}(),
                             defaultParameterAndStartValues,
                             ResultType, ResultTypeHasFloatType)
 
