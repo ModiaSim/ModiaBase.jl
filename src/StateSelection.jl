@@ -931,7 +931,7 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
         local $(vAssigned_names...)
         _leq_mode = _m.linearEquations[$leq_index]
         _leq_mode.mode = -2
-        while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.time)
+        TinyModia.TimerOutputs.@timeit _m.timer "LinearEquationsIteration" while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.time, _m.timer)
             $(while_body...)
         end
         _leq_mode = nothing

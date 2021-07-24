@@ -7,6 +7,7 @@
 import DataFrames
 import OrderedCollections
 using  LinearAlgebra
+import TimerOutputs
 
 export StateCategory, XD, XALG, XLAMBDA, XMUE
 export ResidualCategory, FD, FC_ALG, FC_LOW_HIGH, FC_MUE
@@ -108,7 +109,7 @@ LinearEquations(args...) = LinearEquations{Float64}(args...)
     
 
 """
-     iterating = LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bool, time)
+     iterating = LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bool, time, timer)
 
 This function solves a linear equation system in residual form "residual = A*x - b"
 by iterating with a while loop over this system:
@@ -132,7 +133,7 @@ function getDerivatives!(_der_x, _x, _m, _time)::Nothing
 end
 ```
 """
-function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bool, time)::Bool where {FloatType}
+function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bool, time, timer)::Bool where {FloatType}
     #=
     while LinearEquationsIteration(leq, isInitial,time)
         # body of while-loop
@@ -313,8 +314,10 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             end
         else
             x .= b
-            leq.luA = lu!(A)
-            ldiv!(leq.luA, x)
+            TimerOutputs.@timeit timer "luA ldiv!" begin
+                leq.luA = lu!(A)
+                ldiv!(leq.luA, x)
+            end
         end
         
     elseif leq.A_is_constant && !isInitial  # isInitial=false, LU decomposition of A is available in leq.luA    
