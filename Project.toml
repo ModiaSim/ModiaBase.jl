@@ -1,7 +1,7 @@
 name = "ModiaBase"
 uuid = "ec7bf1ca-419d-4510-bbab-199861c55244"
 authors = ["Hilding Elmqvist <Hilding.Elmqvist@Mogram.net>", "Martin Otter <Martin.Otter@dlr.de>"]
-version = "0.7.2-dev"
+version = "0.7.3"
 
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"

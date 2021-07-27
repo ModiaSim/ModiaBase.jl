@@ -12,7 +12,7 @@ import TimerOutputs
 export StateCategory, XD, XALG, XLAMBDA, XMUE
 export ResidualCategory, FD, FC_ALG, FC_LOW_HIGH, FC_MUE
 
-export LinearEquations, LinearEquationsIterator
+export LinearEquations
 
 export EquationInfo, StateElementInfo, update_equationInfo!, get_stateNames, get_x_table
 
@@ -314,7 +314,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             end
         else
             x .= b
-            TimerOutputs.@timeit timer "luA ldiv!" begin
+            ModiaBase.TimerOutputs.@timeit timer "luA ldiv!" begin
                 leq.luA = lu!(A)
                 ldiv!(leq.luA, x)
             end

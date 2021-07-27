@@ -8,7 +8,7 @@ makedocs(
   pages    = [
      "Home"   => "index.md",
 	 "Tutorial" => "Tutorial.md",
-     "Data Structures"        => "OrderedCollections.md",
+     "Data Structures"        => "DataStructures.md",
      "Equation Sorting"       => "EquationSorting.md",
      "Equation Reduction"     => "EquationReduction.md",
      "Transformation to ODE System" => "TransformationToODEs.md",

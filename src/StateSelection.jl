@@ -931,7 +931,7 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
         local $(vAssigned_names...)
         _leq_mode = _m.linearEquations[$leq_index]
         _leq_mode.mode = -2
-        TinyModia.TimerOutputs.@timeit _m.timer "LinearEquationsIteration" while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.time, _m.timer)
+        ModiaBase.TimerOutputs.@timeit _m.timer "LinearEquationsIteration" while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.time, _m.timer)
             $(while_body...)
         end
         _leq_mode = nothing
@@ -1169,7 +1169,7 @@ For every equation set on every differentiation level perform the following acti
   The equations are first teared to reduce the number of iteration variables and
   afterwards the teared equation system is solved with a special iterator loop that
   solves a linear equation system with an LU decomposition with column pivoting
-  (for details see [`ModiaBase.LinearEquationsIterator`](@ref)).\\
+  (for details see [`ModiaBase.LinearEquationsIteration`](@ref)).\\
 
 - If the equation set consists of *N linear* equations in *M* unknowns (*M > N*) perform
   the following actions (*error, if no linear system*).\\
