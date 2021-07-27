@@ -91,8 +91,6 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ### Version 0.7.3
 
-- Improved scalability by using OrderedDicts instead of named tuples for models, variables and parameter modifications.
-
 - Speed improvements for structural and symbolic algorithms.
 
 - Added support for state events, time events and synchronous operators
@@ -103,8 +101,6 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 - Simplified code for linear equation systems (while-loop instead of for-loop).
 
 - Added TimerOutputs @timeit instrumentation to the solution of linear equation systems.
-
-- Changed from DataStructures to OrderedCollections
 
 
 ### Version 0.7.2
