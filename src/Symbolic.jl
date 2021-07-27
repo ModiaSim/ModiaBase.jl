@@ -10,16 +10,15 @@ Examples of use can be found in TestSymbolic.jl
 """
 module Symbolic
 
-export removeBlock, makeDerVar, append, prepend, Incidence, findIncidence!, linearFactor, solveEquation, 
+export removeBlock, removeQuoteNode, makeDerVar, append, prepend, Incidence, findIncidence!, linearFactor, solveEquation, 
     isLinear, getCoefficients, substitute, removeUnits, resetEventCounters, getEventCounters, substituteForEvents
 
 using Base.Meta: isexpr
-#using OrderedCollections
+using OrderedCollections
 using ModiaBase.Simplify
 using Unitful
 using Measurements
 using MonteCarloMeasurements
-
 
 """
     e = removeBlock(ex)
@@ -30,13 +29,44 @@ Remove :block with LineNumberNode from expressions
 * `return `e`: ex with :block removed 
 """
 removeBlock(ex) = ex
-#removeBlock(arr::Array{Any,1}) = [removeBlock(a) for a in arr]
+removeBlock(arr::Array{Any,1}) = [removeBlock(a) for a in arr]
 removeBlock(arr::Array{Expr,1}) = [removeBlock(a) for a in arr]
+removeBlock(q::QuoteNode) = q 
+    # if typeof(q.value) == Symbol; q.value else q end # begin print("QuoteNode: "); dump(q); q; end # q.value
+removeBlock(d::OrderedDict) = OrderedDict{Symbol, Any}([(k,removeBlock(v)) for (k,v) in d])
+
 function removeBlock(ex::Expr)
-    if isexpr(ex, :block) && typeof(ex.args[1]) == LineNumberNode && length(ex.args) == 2
+    if isexpr(ex, :block) && length(ex.args) == 2 && typeof(ex.args[1]) == LineNumberNode 
         ex.args[2]
+    elseif isexpr(ex, :block) && length(ex.args) == 3 && typeof(ex.args[1]) == LineNumberNode && typeof(ex.args[2]) == LineNumberNode 
+        ex.args[3]
     else
         Expr(ex.head, [removeBlock(arg) for arg in ex.args]...)
+    end
+end
+
+removeQuoteNode(ex) = ex
+removeQuoteNode(arr::Array{Any,1}) = [removeQuoteNode(a) for a in arr]
+removeQuoteNode(arr::Array{Expr,1}) = [removeQuoteNode(a) for a in arr]
+removeQuoteNode(q::QuoteNode) = q.value
+    # if typeof(q.value) == Symbol; q.value else q end # begin print("QuoteNode: "); dump(q); q; end # q.value
+removeQuoteNode(d::OrderedDict) = OrderedDict{Symbol, Any}([(k,removeQuoteNode(v)) for (k,v) in d])
+
+function removeQuoteNode(ex::Expr)
+    Expr(ex.head, [removeQuoteNode(arg) for arg in ex.args]...)
+end
+
+prependPar(ex, prefix, parameters=[], inputs=[]) = ex
+
+function prependPar(ex::Symbol, prefix, parameters=[], inputs=[]) 
+    if prefix == nothing; ex elseif ex in [:time, :instantiatedModel, :_leq_mode, :_x]; ex else Expr(:ref, prefix, QuoteNode(ex)) end
+end
+
+function prependPar(ex::Expr, prefix, parameters=[], inputs=[])
+    if isexpr(ex, :.)
+        Expr(:ref, prependPar(ex.args[1], prefix, parameters, inputs), QuoteNode(ex.args[2].value))
+    else
+        Expr(ex.head, [prependPar(arg, prefix, parameters, inputs) for arg in ex.args]...)
     end
 end
 
@@ -48,17 +78,29 @@ Recursively converts der(x) to Symbol(:(der(x))) in expression `ex`
 * `ex`: Expression or array of expressions
 * `return `e`: ex with der(x) converted 
 """
-makeDerVar(ex, parameters) = if typeof(ex) in [Symbol, Expr] && ex in parameters; prepend(ex, :(_p)) else ex end
+makeDerVar(ex, parameters, inputs, evaluateParameters=false) = if typeof(ex) in [Symbol, Expr] && 
+    ( ex in keys(parameters) || ex in keys(inputs) ); prependPar(ex, :(_p), parameters, inputs) 
+    else ex end
 
-function makeDerVar(ex::Expr, parameters=[])
+function makeDerVar(ex::Expr, parameters, inputs, evaluateParameters=false)
     if ex.head == :call && ex.args[1] == :der
         Symbol(ex)
-	elseif isexpr(ex, :.) && ex in parameters
-		prepend(ex, :(_p))
+	elseif isexpr(ex, :.) && ex in keys(parameters)
+        if evaluateParameters
+            parameters[ex]
+        else
+            prependPar(ex, :(_p), parameters, inputs)
+        end
+	elseif isexpr(ex, :.) && ex in keys(inputs)
+        if evaluateParameters
+            inputs[ex]
+        else
+            prependPar(ex, :(_p), parameters, inputs)
+        end
     elseif ex.head == :.
         Symbol(ex)
     else
-        Expr(ex.head, [makeDerVar(arg, parameters) for arg in ex.args]...)
+        Expr(ex.head, [makeDerVar(arg, parameters, inputs, evaluateParameters) for arg in ex.args]...)
     end
 end
 
@@ -98,41 +140,101 @@ end
 
 
 nCrossingFunctions = 0
+nAfter = 0
 nClocks = 0
 nSamples = 0
+previousVars = []
+preVars = []
+holdVars = []
 
 function resetEventCounters()
     global nCrossingFunctions
+    global nAfter
     global nClocks
     global nSamples 
+	global previousVars
+    global preVars
+    global holdVars
     nCrossingFunctions = 0
+    nAfter = 0
     nClocks = 0
     nSamples = 0
+	previousVars = []
+    preVars = []
+    holdVars = []
 end
 
 function getEventCounters()
     global nCrossingFunctions
+    global nAfter
     global nClocks
-    global nSamples 
-    return (nCrossingFunctions, nClocks, nSamples)
+    global nSamples
+	global previousVars
+    global preVars
+    global holdVars
+    return (nCrossingFunctions, nAfter, nClocks, nSamples, previousVars, preVars, holdVars)
 end
 
 substituteForEvents(ex) = ex
 
 function substituteForEvents(ex::Expr)
     global nCrossingFunctions
+    global nAfter
     global nClocks
     global nSamples 
+	global previousVar
+    global preVars
+    global holdVars
     if ex.head in [:call, :kw]
         if ex.head == :call && ex.args[1] == :positive
             nCrossingFunctions += 1
-            :(positive(instantiatedModel, $nCrossingFunctions, $(substituteForEvents(ex.args[2])), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
+            :(positive(instantiatedModel, $nCrossingFunctions, ustrip($(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
         elseif ex.head == :call && ex.args[1] == :Clock
-            nClocks += 1
-            :(Clock($(substituteForEvents(ex.args[2])), instantiatedModel, $nClocks))
+            @assert 2<=length(ex.args)<=3 "The Clock function takes one or two arguments: $ex"
+             nClocks += 1
+             if length(ex.args) == 2
+                :(Clock(ustrip($(substituteForEvents(ex.args[2]))), instantiatedModel, $nClocks))
+             else
+                :(Clock(ustrip($(substituteForEvents(ex.args[2]))), ustrip($(substituteForEvents(ex.args[3]))), instantiatedModel, $nClocks))
+             end
         elseif ex.head == :call && ex.args[1] == :sample
             nSamples += 1
             :(sample($(substituteForEvents(ex.args[2])), $(substituteForEvents(ex.args[3])), instantiatedModel, $nSamples))
+        elseif ex.head == :call && ex.args[1] == :pre
+            if length(ex.args) == 2
+                push!(preVars, ex.args[2])
+                nPre = length(preVars)
+                :(pre(instantiatedModel, $nPre))
+            else
+                error("The pre function takes one arguments: $ex")
+            end
+        elseif ex.head == :call && ex.args[1] == :previous
+            if length(ex.args) == 3
+                push!(previousVars, ex.args[2])
+                nPrevious = length(previousVars)
+                :(previous($(substituteForEvents(ex.args[3])), instantiatedModel, $nPrevious))
+            else
+                error("The previous function presently takes two arguments: $ex")
+            end
+        elseif ex.head == :call && ex.args[1] == :hold
+            push!(holdVars, ex.args[2])
+            nHold = length(holdVars)
+            if length(ex.args) == 3
+                :(hold($(substituteForEvents(ex.args[2])), $(substituteForEvents(ex.args[3])), instantiatedModel, $nHold))
+            else
+#                error("The hold function takes two or three arguments, hold(v, clock) or hold(expr, start, clock) : $ex")
+                error("The hold function takes two arguments, hold(v, clock): $ex")
+            end
+        elseif ex.head == :call && ex.args[1] in [:initial, :terminal]
+            if length(ex.args) == 1
+                :($(ex.args[1])(instantiatedModel))
+            else
+                error("The $(ex.args[1]) function don't take any arguments: $ex")
+            end
+        elseif ex.head == :call && ex.args[1] == :after
+            # after(instantiatedModel, nr, t, tAsString, leq_mode) 
+            nAfter += 1
+            :(after(instantiatedModel, $nAfter, ustrip($(substituteForEvents(ex.args[2]))), $(string(substituteForEvents(ex.args[2]))), _leq_mode))
         else
             Expr(ex.head, ex.args[1], [substituteForEvents(arg) for arg in ex.args[2:end]]...)
         end
@@ -152,7 +254,7 @@ Traverses an expression and finds incidences of Symbols and der(...)
 * `incidence`: array of incidences. New incidences of `ex` are pushed. 
 """
 findIncidence!(ex, incidence::Array{Incidence,1}) = nothing
-findIncidence!(s::Symbol, incidence::Array{Incidence,1}) = begin if s != :(:); push!(incidence, s) end end
+findIncidence!(s::Symbol, incidence::Array{Incidence,1}) = begin if ! (s in [:(:), :end]); push!(incidence, s) end end
 findIncidence!(arr::Array{Any,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
 findIncidence!(arr::Array{Expr,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
 function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
@@ -162,7 +264,9 @@ function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
         if ex.args[1] == :der
             push!(incidence, ex) # der(x)
             push!(incidence, ex.args[2]) # x
-        else
+        elseif ex.args[1] in [:pre, :previous]
+            [findIncidence!(e, incidence) for e in ex.args[3:end]] # skip operator/function name and first argument
+		else
             [findIncidence!(e, incidence) for e in ex.args[2:end]] # skip operator/function name
         end
     elseif ex.head == :.
@@ -194,15 +298,15 @@ Finds the linear `factor` and `rest` if `ex` is `linear` with regards to `x` (ex
 * `return (rest, factor, linear)`:  
 """
 linearFactor(ex, x) = (ex, 0, true)
-linearFactor(ex::Symbol, x) =  if ex == x; (0, 1, true) else (ex, 0, true) end
-function linearFactor(ex::Expr, x)
+linearFactor(ex::Symbol, x::Incidence) =  if ex == x; (0, 1, true) else (ex, 0, true) end
+function linearFactor(ex::Expr, x::Incidence)
     if ex.head == :block
         linearFactor(ex.args[1], x)    
     elseif ex.head == :macrocall && ex.args[1] == Symbol("@u_str")
         (ex, 0, true)    
     elseif isexpr(ex, :call) && ex.args[1] == :der
         if ex == x; (0, 1, true) else (ex, 0, true) end
-    elseif isexpr(ex, :call) && ex.args[1] == :positive
+    elseif isexpr(ex, :call) && ex.args[1] in [:positive, :previous]
         (ex, 0, true)
     elseif isexpr(ex, :call)
         func = ex.args[1]
@@ -323,7 +427,7 @@ Tests if `ex` is `linear` with regards to `x` (ex == factor*x + rest) and checks
 * `ex`: Expression
 * `return (linear, constant)` 
 """
-function isLinear(equ::Expr, x)
+function isLinear(equ::Expr, x::Incidence)
     (rest, factor, linear) = linearFactor(equ, x)
     (linear, typeof(factor) != Expr)
 end
@@ -338,7 +442,7 @@ If `ex` is `linear` with regards to all `incidence` (Symbols and der(...)), the 
 * `return (incidence, coefficients, rest, linear)` 
 """
 
-function getCoefficients(ex)
+function getCoefficients(ex::Expr)
     incidence = Incidence[]
     findIncidence!(ex, incidence)
     coefficients = []
@@ -349,10 +453,12 @@ function getCoefficients(ex)
         findIncidence!(coefficients, crossIncidence)
         if x in crossIncidence
             linear = false
+            break
         end
         (rest, factor, linearRest) = linearFactor(rest, x)
         if !linearRest
             linear = false
+            break
         end
         push!(coefficients, factor)
     end
@@ -360,6 +466,10 @@ function getCoefficients(ex)
 end
 
 substitute(substitutions, ex) = begin nex = get(substitutions, ex, ex); if nex != ex; nex = substitute(substitutions, nex) else nex end; nex end 
+
+substitute(substitutions, ex::Vector{Symbol}) = [substitute(substitutions, e) for e in ex]
+
+substitute(substitutions, ex::Vector{Expr}) = [substitute(substitutions, e) for e in ex]
 
 substitute(substitutions, ex::MonteCarloMeasurements.StaticParticles) = ex
 

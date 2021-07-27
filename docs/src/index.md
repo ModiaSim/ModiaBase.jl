@@ -88,13 +88,31 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ## Release Notes
 
+### Version 0.7.3
+
+- Speed improvements for structural and symbolic algorithms.
+
+- Added support for state events, time events and synchronous operators
+  (positive(), Clock(), after(), pre(), previous(), hold(), initial(), terminal()) 
+
+- Added support for mixed linear equation systems having Real and Boolean unknowns.
+
+- Simplified code for linear equation systems (while-loop instead of for-loop).
+
+- Added TimerOutputs @timeit instrumentation to the solution of linear equation systems.
+
+
 ### Version 0.7.2
 
 - Support of parameters as hierarchical named tuples.
+
 - Support of array comprehensions.
-- Support of array `end` (e.g. A[3:end])
+
+- Support of array end (e.g. A[3:end])
+
 - If one equation cannot be solved for one unknown (e.g. since function call),
   try to solve it as linear equation system.
+  
 - If variables with init values are explicitly solved for, print warning message
   only if log = true (in TinyModia.simulate! an error occurs, if the init value
   cannot be respected).

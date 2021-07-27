@@ -29,7 +29,7 @@ argument `vProperty` of [`simplifyLinearIntegerEquations`](@ref):
 [DLR - Institute of System Dynamics and Control](https://www.dlr.de/sr/en)
 =#
 
-import DataStructures
+import OrderedCollections
 
 export simplifyLinearIntegerEquations!
 export printSimplifiedLinearIntegerEquations
@@ -567,7 +567,7 @@ function simplifyLinearIntegerEquations!(G, eInt::Vector{Int}, GcInt, Avar::Vect
         printLinearIntegerEquations(Gint, eInt, GcInt, var_name)
         
         println("    Unknown variables:")
-        unknowns = collect(DataStructures.OrderedSet([v for e in Gint for v in e]))
+        unknowns = collect(OrderedCollections.OrderedSet([v for e in Gint for v in e]))
         for v in unknowns
             print(lpad(string(v),8), ": ", var_name(v))
             if v in vShouldBeSolved

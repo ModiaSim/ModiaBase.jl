@@ -26,7 +26,7 @@ export StateSelectionFunctions
 export showCodeWithoutComments
 
 
-#using DataStructures
+#using OrderedCollections
 using ModiaBase
 using ModiaBase.BLTandPantelides
 
@@ -881,7 +881,7 @@ and push this information to eq.SortedEquations.AST.
 function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::Nothing
     # Construct body of for-loop
     empty!(eq.AST_aux)
-    for_body = eq.AST_aux
+    while_body = eq.AST_aux
     vTear_names   = String[]
     vTear_lengths = Int[] 
 
@@ -898,10 +898,10 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
         i2 = i1 + v_length - 1
         indexRange = i1 == i2 ? :($i1) :  :( $i1:$i2 )
         if v_unit == ""
-            push!(for_body, :( $v_name = _leq.vTear_value[$indexRange] ) )
+            push!(while_body, :( $v_name = _leq_mode.vTear_value[$indexRange] ) )
         else
-            expr = :( $v_name = _leq.vTear_value[$indexRange]*@u_str($v_unit) )
-            push!(for_body, expr)
+            expr = :( $v_name = _leq_mode.vTear_value[$indexRange]*@u_str($v_unit) )
+            push!(while_body, expr)
         end
         push!(vAssigned_names, v_name)
         push!(vTear_lengths  , v_length)
@@ -912,14 +912,14 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
 
     # Add solved equations
     for (i,e) in enumerate(eq.eSolved)
-        push!(for_body, eq.fc.getSolvedEquationAST(e, eq.vSolved[i]))
+        push!(while_body, eq.fc.getSolvedEquationAST(e, eq.vSolved[i]))
         push!(vAssigned_names, eq.fc.var_julia_name(eq.vSolved[i]))
     end
 
     # Add residual equations
     #   leq.residuals[i] = < equation in residual form >
     for (i,e) in enumerate(eq.eResiduals)
-        push!(for_body, eq.fc.getResidualEquationAST(e, :(_leq.residual_value[$i]) ))
+        push!(while_body, eq.fc.getResidualEquationAST(e, :(_leq_mode.residual_value[$i]) ))
     end
 
     # Generate LinearEquations data structure
@@ -927,23 +927,25 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
     
     # Construct for-loop
     leq_index = length(eq.equationInfo.linearEquations)
-    for_loop = quote
+    while_loop = quote
         local $(vAssigned_names...)
-        _leq = _m.linearEquations[$leq_index]
-        for _leq_mode in ModiaBase.LinearEquationsIterator(_leq, _m.isInitial)
-            $(for_body...)
+        _leq_mode = _m.linearEquations[$leq_index]
+        _leq_mode.mode = -2
+        ModiaBase.TimerOutputs.@timeit _m.timer "LinearEquationsIteration" while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.time, _m.timer)
+            $(while_body...)
         end
+        _leq_mode = nothing
     end
 
     if eq.log
-        showCodeWithoutComments(for_loop)
+        showCodeWithoutComments(while_loop)
     end
 
     # Store information about linear equation system
     teq = TearedEquations(true, hasConstantCoefficients,
                           copy(eq.vSolved), copy(eq.vTear),
                           copy(eq.eSolved), copy(eq.eResiduals),
-                          for_loop)
+                          while_loop)
     push!(eq.tearedEquations, teq)
     teq_index = length(eq.tearedEquations)
 
@@ -1167,7 +1169,7 @@ For every equation set on every differentiation level perform the following acti
   The equations are first teared to reduce the number of iteration variables and
   afterwards the teared equation system is solved with a special iterator loop that
   solves a linear equation system with an LU decomposition with column pivoting
-  (for details see [`ModiaBase.LinearEquationsIterator`](@ref)).\\
+  (for details see [`ModiaBase.LinearEquationsIteration`](@ref)).\\
 
 - If the equation set consists of *N linear* equations in *M* unknowns (*M > N*) perform
   the following actions (*error, if no linear system*).\\
@@ -1369,10 +1371,10 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
                             if linearAssumption
                                 isLinear = true
                                 hasConstantCoefficients = false
-                                showMessage2("It is heuristically assumed that equation system is linear (although isLinearEquation returned isLinear=false).";
-                                             severity  = WARNING,
-                                             variables = vConstraints[i],
-                                             equations = eConstraints[i])
+                                #showMessage2("It is heuristically assumed that equation system is linear (although isLinearEquation returned isLinear=false).";
+                                #             severity  = WARNING,
+                                #             variables = vConstraints[i],
+                                #             equations = eConstraints[i])
                             end
                         end
 
@@ -1495,10 +1497,10 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
     if length(ODE_states) == 0
         if log
             println("Model has only explicitly solved algebraic variables.\n",
-                    "Added a dummy differential equation der(x[1]) = -x[1], x[1](t0) = 0")
+                    "Added a dummy differential equation der(_dummy_x) = -_dummy_x, _dummy_x(t0) = 0")
         end
         push!(eq.equationInfo.x_info, ModiaBase.StateElementInfo(
-              "", :(), "", :(), XD, 1, "", false, NaN, false))
+              "_dummy_x", :(), "der(_dummy_x)", :(), XD, 1, "", false, NaN, false))
     end
 
     if log

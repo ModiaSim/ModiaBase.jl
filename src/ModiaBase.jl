@@ -14,6 +14,8 @@ const Date    = "2021-04-19"
 
 #println("\nImporting ModiaBase Version $Version ($Date)")
 
+using Unitful
+
 include("LinearIntegerEquations.jl")
 
 include("BLTandPantelidesUtilities.jl")

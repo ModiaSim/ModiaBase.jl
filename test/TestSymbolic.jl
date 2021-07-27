@@ -119,9 +119,9 @@ function testGetCoefficients()
     @test showGetCoefficients(:(v1 = 0)) == "(Union{Expr, Symbol}[:v1], Any[1], 0, true)"
     @test showGetCoefficients(:(v1 = 10)) == "(Union{Expr, Symbol}[:v1], Any[1], -10, true)"
     @test showGetCoefficients(:(v1 = v2)) == "(Union{Expr, Symbol}[:v1, :v2], Any[1, -1], 0, true)"
-    @test showGetCoefficients(:(v1 = v2 + sin(v3))) == "(Union{Expr, Symbol}[:v1, :v2, :v3], Any[1, -1, 0], :(-(sin(v3))), false)"
+    @test showGetCoefficients(:(v1 = v2 + sin(v3))) == "(Union{Expr, Symbol}[:v1, :v2, :v3], Any[1, -1], :(-(sin(v3))), false)"
     @test showGetCoefficients(:(v1 = -v2)) == "(Union{Expr, Symbol}[:v1, :v2], Any[1, 1], 0, true)"
-    @test showGetCoefficients(:(R*i = u)) == "(Union{Expr, Symbol}[:R, :i, :u], Any[:i, 0, -1], 0, false)"
+    @test showGetCoefficients(:(R*i = u)) == "(Union{Expr, Symbol}[:R, :i, :u], Any[:i], :(-u), false)"
     println()
 
 end
