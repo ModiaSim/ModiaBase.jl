@@ -209,7 +209,7 @@ end
 
 
 
-showCodeWithoutComments(code) = println("code = ", replace(sprint(show,code), r".*#= .*\n" => "") )
+showCodeWithoutComments(code) = println("code = ", replace(sprint(show,code), r"( *#= .*=#\n)|(#= .*=#)" => "") )
 
 
 
