@@ -88,6 +88,14 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ## Release Notes
 
+### Version 0.7.4
+
+- showCodeWithoutComments(code): Bug corrected to only remove comments and not other code
+  (ModiaLang.@instantiateModel(..., logCode=true, ...) gave wrong output).
+  
+- Used packages updated
+
+
 ### Version 0.7.3
 
 - Speed improvements for structural and symbolic algorithms.
