@@ -88,6 +88,11 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ## Release Notes
 
+### Version 0.7.5
+
+- Added a restriction, so that DiffRules 1.0.2 is used, instead of 1.2.1 (which leads to an error in the test suite).
+
+
 ### Version 0.7.4
 
 - showCodeWithoutComments(code): Bug corrected to only remove comments and not other code
