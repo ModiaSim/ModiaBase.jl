@@ -8,6 +8,8 @@ import DataFrames
 import OrderedCollections
 using  LinearAlgebra
 import TimerOutputs
+import RecursiveFactorization
+
 
 export StateCategory, XD, XALG, XLAMBDA, XMUE
 export ResidualCategory, FD, FC_ALG, FC_LOW_HIGH, FC_MUE
@@ -73,6 +75,7 @@ mutable struct LinearEquations{FloatType <: Real}
     
     A::Matrix{FloatType}
     b::Vector{FloatType}
+    pivots::Vector{Int}             # Pivot vector if recursiveFactorization = true
     residuals::Vector{FloatType}    # Values of the residuals FloatType vector; length(residuals) = sum(residuals_length) = sum(vTear_lengths)   
     residual_value::AbstractVector  # Values of the residual variables ::Vector{Any}, length(residual_values) = nResiduals
     
@@ -90,19 +93,25 @@ mutable struct LinearEquations{FloatType <: Real}
     # Constructed during initialization
     residual_unitRanges::Vector{UnitRange{Int}} # residuals[residual_unitRanges[i]] = residual_value[i], if residual is a vector
     residual_indices::Vector{Int}               # residuals[residual_indices[i]] = residual_value[i], if residual is a scalar
+    recursiveFactorization::Bool                # = true, if RecursiveFactorization.jl shall be used to solve the linear equation system
+ 
     luA::LU{FloatType,Array{FloatType,2}}       # lu-Decomposition of A
     
     function LinearEquations{FloatType}(vTear_names::Vector{String}, vTear_lengths::Vector{Int},
-                                        nResiduals::Int, A_is_constant::Bool) where {FloatType <: Real}
+                                        nResiduals::Int, A_is_constant::Bool;
+                                        recursiveFactorization::Union{Bool,Missing} = missing) where {FloatType <: Real}
         @assert(length(vTear_names) > 0)
         @assert(length(vTear_names) == length(vTear_lengths))
         nx = sum(vTear_lengths)
         @assert(nx > 0)
         state = -1
+        
+        # Use RecursiveFactorization.jl if at most 500 equations
+        recursiveFactorization2 = ismissing(recursiveFactorization) ? nx <= 500 : recursiveFactorization
         new(A_is_constant, vTear_names, vTear_lengths, zeros(FloatType,nx), nResiduals, 
-            zeros(FloatType,nx,nx), zeros(FloatType,nx), zeros(FloatType,nx),
+            zeros(FloatType,nx,nx), zeros(FloatType,nx), fill(0,nx), zeros(FloatType,nx),
             Vector{Any}(undef,nResiduals), -4, -1, niter_max, false, String[], String[],
-            fill(0:0,nResiduals), fill(0,nResiduals))
+            fill(0:0,nResiduals), fill(0,nResiduals), recursiveFactorization2)
     end
 end
 LinearEquations(args...) = LinearEquations{Float64}(args...)
@@ -314,9 +323,16 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             end
         else
             x .= b
-            ModiaBase.TimerOutputs.@timeit timer "luA ldiv!" begin
-                leq.luA = lu!(A)
-                ldiv!(leq.luA, x)
+            if leq.recursiveFactorization
+                ModiaBase.TimerOutputs.@timeit timer "solve A*x=b (RecursiveFactorization)" begin
+                    leq.luA = RecursiveFactorization.lu!(A, leq.pivots)
+                    ldiv!(leq.luA, x)
+                end
+            else
+                ModiaBase.TimerOutputs.@timeit timer "solve A*x=b (LinearAlgebra)" begin            
+                    leq.luA = lu!(A)
+                    ldiv!(leq.luA, x)
+                end                 
             end
         end
         
