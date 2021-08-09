@@ -886,7 +886,7 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
     vTear_lengths = Int[] 
 
     # Assign iteration variables
-    #   v_i = leq.vTear_value[i]
+    #   v_i = leq.x[i]
     vAssigned_names = Any[]
     i1 = 0
     i2 = 0
@@ -898,9 +898,9 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
         i2 = i1 + v_length - 1
         indexRange = i1 == i2 ? :($i1) :  :( $i1:$i2 )
         if v_unit == ""
-            push!(while_body, :( $v_name = _leq_mode.vTear_value[$indexRange] ) )
+            push!(while_body, :( $v_name = _leq_mode.x[$indexRange] ) )
         else
-            expr = :( $v_name = _leq_mode.vTear_value[$indexRange]*@u_str($v_unit) )
+            expr = :( $v_name = _leq_mode.x[$indexRange]*@u_str($v_unit) )
             push!(while_body, expr)
         end
         push!(vAssigned_names, v_name)
@@ -930,8 +930,8 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
     while_loop = quote
         local $(vAssigned_names...)
         _leq_mode = _m.linearEquations[$leq_index]
-        _leq_mode.mode = -2
-        ModiaBase.TimerOutputs.@timeit _m.timer "LinearEquationsIteration" while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.time, _m.timer)
+        _leq_mode.mode = -3
+        ModiaBase.TimerOutputs.@timeit _m.timer "LinearEquationsIteration" while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.solve_leq, _m.storeResult, _m.time, _m.timer)
             $(while_body...)
         end
         _leq_mode = nothing

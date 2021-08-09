@@ -7,8 +7,9 @@ using Test
     include("TestSymbolic.jl")
     include("TestBLTandPantelides.jl")
     include("TestDifferentiate.jl")
-    include("TestTearing.jl")    
-    include("TestLinearIntegerEquations.jl")  
+    include("TestTearing.jl")
+    include("TestLinearIntegerEquations.jl")
+    include("TestLinearEquations.jl")
 end
 
 end

@@ -57,71 +57,88 @@ Type of a residual (see also [`StateCategory`](@ref) for the type of a state).
 const niter_max = 20  # Maximum number of fixed-point iterations to solve A*x = b
 
 """
-    leq = LinearEquations{FloatType}(vTear_names::Vector{String},  vTear_lengths::Vector{Int},
+    leq = LinearEquations{FloatType}(x_names::Vector{String},  x_lengths::Vector{Int},
                                      nResiduals::Int, A_is_constant::Bool)
 
-Define linear equation system "A*x=b" with `length(x) = sum(vTear_lengths)`.
-If `A_is_constant = true` then `A` is a matrix that is constant after
-initialization.
+Define linear equation system "A*x=b" with `x::Vector{FloatType}`.
 
-For details of its usage for code generation see [`LinearEquationsIteration`](@ref).
+- `x` is constructed from a set of scalar or arrays variables i with names `x_names[i]`
+   and length `x_length[i]` (that is `length(x) = sum(x_lengths)`).
+
+- The residuals are constructed from a set of `nResidual` scalar or array variables.
+  During code generation, it is not possible to determine the sizes of these variables.
+  This information is only available at runtime (when function LinearEquationsIteration(..)
+  is called with isInitial = true).
+
+- If `A_is_constant = true` then `A` is a matrix that is constant after initialization.
+
+For details how to use this constructor, see [`LinearEquationsIteration`](@ref).
 """
 mutable struct LinearEquations{FloatType <: Real}
+    odeMode::Bool                   # Set from the calling function after LinearEquations was instantiated (default: true)
+                                    # = true (standard mode): Compute "x" from equation "residuals = A*x - b"
+                                    # = false (DAE solver): During events (including initialization)
+                                    #   compute "x" as for odeMode=true. Outside of events:
+                                    #   (1) "x" is set from the outside (= der(x_dae) provided by DAE solver)
+                                    #   (2) Compute "residuals" from "residuals := A*x - b"
+                                    #   (3) From the outside copy "residuals" into "residuals_dae" of the DAE solver.
+
     A_is_constant::Bool             # = true, if A-matrix is constant
-    vTear_names::Vector{String}     # The names of the tearing variables (for error message)
-    vTear_lengths::Vector{Int}      # Lengths of the vTear_names elements (length(vTear_value) = sum(vTear_lengths))    
-    vTear_value::Vector{FloatType}  # Values of vTear variables (needed during execution of generated code)
-    nResiduals::Int                 # Number of residuals
-    
+    x_names::Vector{String}         # Names of the x-variables
+    x_lengths::Vector{Int}          # Lengths of the x-variables (sum(x_lengths) = length(x))
+    x::Vector{FloatType}            # Values of iteration variables
+    nResiduals::Int                 # Number of residual variables
+
     A::Matrix{FloatType}
     b::Vector{FloatType}
     pivots::Vector{Int}             # Pivot vector if recursiveFactorization = true
-    residuals::Vector{FloatType}    # Values of the residuals FloatType vector; length(residuals) = sum(residuals_length) = sum(vTear_lengths)   
+    residuals::Vector{FloatType}    # Values of the residuals FloatType vector; length(residuals) = sum(residuals_length) = sum(x_lengths)
     residual_value::AbstractVector  # Values of the residual variables ::Vector{Any}, length(residual_values) = nResiduals
-    
+
     # Iteration status of for-loop
-    mode::Int       # Operational mode (see function iterate below)
+    mode::Int       # Operational mode (see function LinearEquationsIteration)
     niter::Int      # Current number of iterations in the fix point iteration scheme
     niter_max::Int  # Maximum number of iterations
     success::Bool   # = true, if solution of A*x = b is successfully computed
                     # = false, if solution is not computed; continue with fix point iteration
-                    
+
     # For warning message if niter > niter_max
     inconsistentPositive::Vector{String}
-    inconsistentNegative::Vector{String}   
-    
+    inconsistentNegative::Vector{String}
+
     # Constructed during initialization
     residual_unitRanges::Vector{UnitRange{Int}} # residuals[residual_unitRanges[i]] = residual_value[i], if residual is a vector
     residual_indices::Vector{Int}               # residuals[residual_indices[i]] = residual_value[i], if residual is a scalar
     recursiveFactorization::Bool                # = true, if RecursiveFactorization.jl shall be used to solve the linear equation system
- 
+
     luA::LU{FloatType,Array{FloatType,2}}       # lu-Decomposition of A
-    
-    function LinearEquations{FloatType}(vTear_names::Vector{String}, vTear_lengths::Vector{Int},
+
+    function LinearEquations{FloatType}(x_names::Vector{String}, x_lengths::Vector{Int},
                                         nResiduals::Int, A_is_constant::Bool;
                                         recursiveFactorization::Union{Bool,Missing} = missing) where {FloatType <: Real}
-        @assert(length(vTear_names) > 0)
-        @assert(length(vTear_names) == length(vTear_lengths))
-        nx = sum(vTear_lengths)
+        @assert(length(x_names) > 0)
+        @assert(length(x_names) == length(x_lengths))
+        nx = sum(x_lengths)
         @assert(nx > 0)
-        state = -1
-        
+
         # Use RecursiveFactorization.jl if at most 500 equations
-        recursiveFactorization2 = ismissing(recursiveFactorization) ? nx <= 500 : recursiveFactorization
-        new(A_is_constant, vTear_names, vTear_lengths, zeros(FloatType,nx), nResiduals, 
+        recursiveFactorization2::Bool = ismissing(recursiveFactorization) ? nx <= 500 : recursiveFactorization
+        new(true, A_is_constant, x_names, x_lengths, zeros(FloatType,nx), nResiduals,
             zeros(FloatType,nx,nx), zeros(FloatType,nx), fill(0,nx), zeros(FloatType,nx),
-            Vector{Any}(undef,nResiduals), -4, -1, niter_max, false, String[], String[],
+            Vector{Any}(undef,nResiduals), -2, 0, niter_max, false, String[], String[],
             fill(0:0,nResiduals), fill(0,nResiduals), recursiveFactorization2)
     end
 end
 LinearEquations(args...) = LinearEquations{Float64}(args...)
-    
+
 
 """
-     iterating = LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bool, time, timer)
+     iterating = LinearEquationsIteration(leq, isInitial, [solve, isStoreResult,] time, timer)
 
 This function solves a linear equation system in residual form "residual = A*x - b"
-by iterating with a while loop over this system:
+by iterating with a while loop over this system (arguments `solve, isStoreResult` are optional
+and have only an effect if leq.odeMode=false, that is if the linear equation system is
+solved in DAE mode):
 
 ```julia
 function getDerivatives!(_der_x, _x, _m, _time)::Nothing
@@ -129,100 +146,168 @@ function getDerivatives!(_der_x, _x, _m, _time)::Nothing
     ...
     _leq      = _m.linearEquations[<nr>]   # leq::LinearEquations{FloatType}
     _leq.mode = -2  # initializes the iteration
-    while LinearEquationsIteration(_leq, _m.isInitial, _m.time) 
-        v_tear1 = _leq.vTear_value[1:3]
-        v_tear2 = _leq.vTear_value[4]
+    while LinearEquationsIteration(_leq, _m.isInitial, _m.solve_leq, _m.storeResult, _m.time, _m.timer)
+        x1 = _leq.x[1:3]
+        x2 = _leq.x[4]
         ...
-        v_solved1 = f(v_tear1, v_tear2, ..., positive(v_tear1,.., _leq))
-        v_solved2 = f(v_tear1, v_tear2, ..., v_solved1)
+        v_solved1 = f(x1, x2, ..., positive(x1,.., _leq))
+        v_solved2 = f(x1, x2, ..., v_solved1)
         ...
-        _leq.residuals[..] = < residual equation(v_tear1,...) > 
+        _leq.residual_value[..] = < residual equation(x1,x2,...) >
     end
     ...
 end
 ```
+
+Note, A and b can be functions of linear event operators, such as `positive(c_i'*x - d_i)`.
+In this case this system is solved by a fixed point iteration scheme,
+that is `A*x = b` is solved until potentially present
+`positive(c_i'*x - d_i)` calls are consistent to x
+(`c_i'*x - d_i` and positive(..) must have the same sign).
+Iteration is terminated after 20 iterations if no convergence is found.
+In this case a warning message is triggered and simulation is continued
+(it might be that simulation is still successful, even if `x` and
+`positive(..)` are temporarily not consistent to each other).
+
+The current values of A,x,b,residuals are stored in leq.
+If A is fixed after initialization (leq.A_is_constant = true), then A is computed
+only once at initialization, the LU decomposition of A is stored in leq
+and used in subsequent calls to solve the equation system.
+
+
+# Input arguments
+
+- `leq::LinearEquations{FloatType}`: Instance of `LinearEquations`.
+- `isInitial::Bool`: = true: Called during initialization.
+- `solve::Bool`: = true: leq.x is computed by LinearEquationsIteration.
+                     = false: leq.x has been set by calling environment 
+                              (typically when called from DAE integrator).
+                               Note, at events and at terminate, solve must be true).
+- `isStoreResult::Bool`: = true: Called at a communication point (store results).
+- `time`: Actual time instant (only used for warning/error messages).
+- `timer::TimerOutputs.TimerOutput`: Timer used to measure the solution of the linear equation system.
+
+
+# Output arguments
+
+- iterating::Bool: = true : Continue iteration of while-loop.
+                   = false: Immediately break while-loop after this function was terminated.
+
+
+# Variable `leq.mode::Int` on output if iterating=false
+
+Variable `leq.mode` can be accessed (read-only) in the body of the while-loop to enhance efficiency.
+For example, if residuals are computed in a function and the function evaluation is expensive.
+
+```
+leq.mode = -2: Residuals might be computed, but they are not used.
+leq.mode = -1: Compute "residuals .= A*x - b"
+leq.mode =  0: Compute "residuals .= A*0 - b"
+leq.mode >  0: Compute "residuals .= A*e_i - b"   # e_i = unit vector with i = leq.mode
+```
+
+
+# Hidden argument `leq.mode::Int` on input
+
+```julia
+leq.mode = -3  # LinearEquationsIteration is called the first time
+               if leq.odeMode || solve
+                  # ODE mode or DAE mode at an event (solve "x" from equation "residuals = A*x - b")
+                  # Initialize fixed point iteration or continue fixed point iteration (if in DAE mode)
+                  leq.niter     = 0      # Number of event iterations
+                  leq.success   = false  # Event iteration was not yet successful
+                  leq.x        .= 0
+                  leq.mode      = 0      # Compute "residuals .= A*0 - b"
+               else # solve = false
+                  # DAE mode (but not at an event)
+                  leq.niter     = 0
+                  leq.success   = true
+                  leq.x_is_zero = false
+                  if isStoreResult
+                     leq.mode = -2  # Residuals might be computed, but they are not used.
+                  else
+                     leq.mode = -1  # Compute "residuals .= A*x - b"
+                  end
+               end
+               return true  # Continue while-loop
+
+leq.mode = -2  # Terminate while-loop or initialize next event iteration
+               if leq.success           # Set from leq.mode=-2 or leq.mode>=0 or from event operators, such as positive!(...)
+                  return false          # Terminate while-loop
+               elseif leq.niter > 20
+                  <warning>             # Event iteration failed (variables are not consistent)
+                  return false          # Terminate while-loop
+               else
+                  # Initialize next event iteration
+                  leq.x        .= 0
+                  leq.x_is_zero = true
+                  leq.mode      = 0     # Compute "residuals .= A*0 - b"
+                  return true           # Continue while-loop
+               end
+
+leq.mode = -1: @assert(!leq.odeMode && !solve)
+               # DAE mode, but not at an event
+               return false      # Terminate while-loop
+               
+leq.mode =  0: @assert(leq.odeMode || solve)
+               # ODE mode or DAE mode at an event (solve "x" from equation "residuals = A*x - b")
+               leq.b    = -leq.residuals
+               leq.x[1] = 1.0
+               leq.mode = 1      # Compute "residuals := A*e_1 - b"
+               return true       # Continue while-loop
+
+leq.mode >  0: @assert(leq.odeMode || solve)
+               j          = leq.mode
+               leq.A[:,j] = leq.residuals + leq.b
+               leq.x[j]   = 0.0
+               if j < nx
+                   leq.x[j+1] = 1.0
+                   leq.mode   = j+1      # Compute A[:,j+1] after the next iteration
+                   return true           # Continue while-loop
+               elseif j == nx
+                   leq.x = solve(leq.A,leq.b) # Solve linear equation system A*x = b for x.
+                   leq.mode    = -1      # Compute all variables IN the next iteration as function of x
+                   leq.niter  += 1       # Increment number of iterations to solve A*x = b
+                   leq.success = true    # Terminate for-loop at the beginning of the next iteration,
+                                         # provided no positive(..) call changes its value.
+                                         # (leq.success is set to false in positive(..), if the return value changes).
+                   return true           # Continue while-loop
+               end
+```
 """
-function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bool, time, timer)::Bool where {FloatType}
-    #=
-    while LinearEquationsIteration(leq, isInitial,time)
-        # body of while-loop
-    end
-    
-    
-    Solve "residuals = A*x - b" where
-    A and b can be functions of positive(c_i'*x - d_i). In this case this system
-    is solved by a fixed point iteration scheme, that is "A*x = b" is solved
-    until potentially present positive(c_i'*x - d_i) calls are consistent to x.
-    Iteration is terminated after 20 iterations if no convergence is found.
-    In this case a warning message is triggered and simulation is continued
-    (it might be that simulation is still successful, even if "x" and
-    positive(..) are temporarily not consistent to each other).
-
-    Note, the current values of A,x,b,residuals are stored in leq.
-    If A is fixed after initialization (leq.A_is_constant = true), then A is computed
-    only once at initialization, the LU decomposition of A is stored in leq
-    and used in subsequent calls to solve the equation system.
-    
-    
-        On input (mode = leq.mode, x = leq.vTear_value):
-
-        mode = -2: # Initialize fixed point iteration
-                   leq.niter   = 0
-                   leq.success = false
-                   leq.mode    = 0
-                   x .= 0
-                   return true
-                   
-        mode = -1: if leq.success
-                      return false   # Terminate while-loop
-                   elseif leq.niter > 20
-                      <warning>
-                      return false   # Terminate while-loop
-                   end
-                   leq.mode = 0      # Re-initialize next solver-iteration 
-                   x .= 0
-                   return true 
-
-        mode =  0: b    = -residuals  # Compute b
-                   mode = 1           # Compute A[:,1] after the next iteration
-                   x[1] = 1.0
-                   return true        
-                
-        mode >  1: j      = mode
-                   A[:,j] = residuals + b  # Compute A[:,j]. 
-                   x[j]   = 0.0
-                   if j < nx
-                       x[j+1]   = 1.0
-                       leq.mode = j+1
-                       return true         # Compute A[:,j+1] after the next iteration
-                   elseif j == nx
-                       x = A\b            # Solve linear equation system A*x = b for x.
-                       leq.mode    = -1   # Compute all variables IN the next iteration as function of x
-                       leq.niter  += 1    # Increment number of iterations to solve A*x = b
-                       leq.success = true # Terminate for-loop at the beginning of the next iteration,
-                                          # provided no positive(..) call changes its value.
-                                          # (leq.success is set to false in positive(..), if the return value changes).
-                       return true
-                   end
-    =# 
+LinearEquationsIteration(leq::LinearEquations, isInitial, time, timer) = LinearEquationsIteration(leq, isInitial, true, false, time, timer)
+function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bool, solve::Bool,
+                                  isStoreResult::Bool, time, timer)::Bool where {FloatType}
     mode = leq.mode
-    x    = leq.vTear_value
-    nx   = length(x)
+    nx   = length(leq.x)
     
-    if mode == -2 
-        # Initialize fixed point iteration
-        leq.niter   = 0
-        leq.success = false 
+    if mode == -3
+        # LinearEquationsIteration is called the first time in the current model evaluation
+        leq.niter = 0      # Number of event iterations
         empty!(leq.inconsistentPositive)
-        empty!(leq.inconsistentNegative)        
-        leq.mode = 0
-        x .= 0
-        return true
-        
-    elseif mode == -1
-        # Either terminate fixed point iteration, or start a new iteration
-        if leq.success
-            return false
+        empty!(leq.inconsistentNegative)
+
+        if leq.odeMode || solve
+           # ODE mode or DAE mode at an event (solve "x" from equation "residuals = A*x - b")
+           # Initialize fixed point iteration or continue fixed point iteration (if in DAE mode)
+           leq.success  = false  # Event iteration was not yet successful
+           leq.x       .= 0
+           leq.mode     = 0      # Initialize leq and compute "residuals .= A*0 - b"
+        else
+           # DAE mode (but not at an event)
+           leq.success   = true
+           if isStoreResult
+              leq.mode = -2   # Residuals might be computed, but they are not used.
+           else
+              leq.mode = -1   # Initialize leq and compute "residuals .= A*x - b"
+           end
+        end
+        return true  # Continue while-loop
+
+    elseif mode == -2
+        # Terminate while-loop or initialize next event iteration
+        if leq.success   # Set from leq.mode=-2 or leq.mode>=0 or from event operators, such as positive!(...)
+            return false # Terminate while-loop
         elseif leq.niter > niter_max
             str = ""
             if length(leq.inconsistentPositive) > 0
@@ -234,31 +319,32 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
                 end
                 str = str * "negative(expr) is inconsistent for expr = $(leq.inconsistentNegative)."
             end
-            @warn "At time = $time, no consistent solution found for mixed linear equation system.\n" * 
+            @warn "At time = $time, no consistent solution found for mixed linear equation system.\n" *
                   "Simulation is continued although some variables might not be correct at this time instant.\n$str"
-            return false
+            return false       # Terminate while-loop
         end
-        leq.mode = 0
-        x .= 0
-        return true
-  
-    elseif mode < -2 || mode > nx
+        leq.x        .= 0
+        leq.mode      = 0      # Compute "residuals .= A*0 - b"
+        return true            # Continue while-loop
+
+    elseif mode < -3 || mode > nx
         @goto ERROR
     end
 
-    A   = leq.A
-    b   = leq.b
-    nResiduals          = leq.nResiduals    
+    x = leq.x
+    A = leq.A
+    b = leq.b
+    nResiduals          = leq.nResiduals
     residuals           = leq.residuals
     residual_value      = leq.residual_value
     residual_unitRanges = leq.residual_unitRanges
     residual_indices    = leq.residual_indices
-    
+
     if isInitial && mode == 0
         # Construct unit ranges for the residual variables vector to copy values into the residuals vector
         j = 1
         for i = 1:nResiduals
-            res_value = residual_value[i]        
+            res_value = residual_value[i]
             if typeof(res_value) <: Number
                 residual_indices[i] = j
                 j = j+1
@@ -272,10 +358,10 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
                 j = k+1
             end
         end
-        
+
         if j-1 != nx
             len_res = j-1
-            error("The length of the residuals vector (= $len_res) is not equal to the length of the vTear_value vector (= $nx)")
+            error("The length of the residuals vector (= $len_res) is not equal to the length of the x vector (= $nx)")
         end
     end
 
@@ -291,7 +377,11 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
         end
     end
 
-    if !leq.A_is_constant || isInitial  # A is not constant or A is constant and isInitial = true
+    if mode == -1
+        @assert(!leq.odeMode && !solve)
+        return false   # Terminate while-loop (leq.residuals must be copied into DAE residuals)
+        
+    elseif !leq.A_is_constant || isInitial  # A is not constant or A is constant and isInitial = true
         if mode == 0
             # residuals = A*x - b -> b = -residuals)
             for i = 1:nx
@@ -301,22 +391,22 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             x[1] = convert(FloatType, 1)
             return true
         end
-        
+
         # residuals = A*x - b -> A[:,j] = residuals + b)
         j = mode
         for i = 1:nx
             A[i,j] = residuals[i] + b[i]
         end
         x[j] = 0
-    
+
         if j < nx
             leq.mode += 1
             x[leq.mode] = convert(FloatType, 1)
             return true
         end
-        
+
         # Solve linear equation system
-        if nx == 1       
+        if nx == 1
             x[1] = b[1]/A[1,1]
             if !isfinite(x[1])
                 error("Linear scalar equation system is singular resulting in: ", leq.vTear_names[1], " = ", x[1])
@@ -329,42 +419,51 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
                     ldiv!(leq.luA, x)
                 end
             else
-                ModiaBase.TimerOutputs.@timeit timer "solve A*x=b (LinearAlgebra)" begin            
+                ModiaBase.TimerOutputs.@timeit timer "solve A*x=b (LinearAlgebra)" begin
                     leq.luA = lu!(A)
                     ldiv!(leq.luA, x)
-                end                 
+                end
             end
         end
-        
-    elseif leq.A_is_constant && !isInitial  # isInitial=false, LU decomposition of A is available in leq.luA    
+
+    elseif leq.A_is_constant && !isInitial  # isInitial=false, LU decomposition of A is available in leq.luA
         for i = 1:nx
             x[i] = -residuals[i]
-        end 
-            
+        end
+
         # Solve linear equation system
         if nx == 1
             x[1] = x[1]/A[1,1]
             if !isfinite(x[1])
                 error("Linear scalar equation system is singular resulting in: ", leq.vTear_names[1], " = ", x[1])
             end
-        else        
+        else
             ldiv!(leq.luA, x)
         end
-        
+
     else
         @goto ERROR
-    end   
-   
+    end
+
     # Linear equation system solved
-    leq.mode    = -1   # Compute all variables IN the next iteration as function of x
+    leq.mode    = -2   # Compute all variables IN the next iteration as function of x
     leq.niter  += 1    # Increment number of iterations to solve A*x = b
     leq.success = true # Terminate for-loop at the beginning of the next iteration,
                        # provided no positive(..) call changes its value.
                        # (leq.success is set to false in positive(..), if the return value changes).
-    return true          
+    return true
 
     @label ERROR
-    @error "Should not occur (Bug in file ModiaBase/src/EquationAndStateInfo.jl,\nleq.mode = $(leq.mode); vTear = $(leq.vTear_names), time=$time, isInitial=$isInitial)."
+    error("Should not occur (Bug in file ModiaBase/src/EquationAndStateInfo.jl):\n",
+          "   time           = $time\n",
+          "   isInitial      = $isInitial,\n",
+          "   solve          = $solve,\n",
+          "   isStoreResult  = $isStoreREsult,\n",
+          "   leq.odeMode    = $(leq.odeMode),\n",
+          "   leq.mode       = $(leq.mode),\n",
+          "   leq.x_names    = $(leq.x_names),\n",
+          "   leq.x_lengths  = $(leq.x_lengths),\n",
+          "   leq.nResiduals = $(leq.nResiduals).\n")
 end
 
 
@@ -380,18 +479,18 @@ Status of an EquationInfo instance:
    Also variables nx and x_infoByIndex are not defined.
    With function [`update_equationInfo!`](@ref), the variables length, unit, startIndex
    in x_info::Vector{StateElementInfo} are computed, as well as nx and x_infoByIndex.
-   
+
 - `CODE_GENERATION`: Is constructed during code generation with getSortedAndSolvedAST(..).
   The following variables in x_info::Vector{StateElementInfo}
   are **not** defined: startIndex.
-  Also variables nx and x_infoByIndex are not defined.  
+  Also variables nx and x_infoByIndex are not defined.
   With function [`update_equationInfo!`](@ref), the variables startIndex
   in x_info::Vector{StateElementInfo} are computed, as well as nx and x_infoByIndex.
-  
+
 - `SOLVER_MODEL`: Is used during simulation in a SolverModel. With function
   [`update_equationInfo!`](@ref), missing variables are constructed depending
   on the information given with `MANUAL` or `CODE_GENERATION` and the actual
-  modelValues instance (here unit and length information is available). 
+  modelValues instance (here unit and length information is available).
 """
 @enum EquationInfoStatus MANUAL=1 CODE_GENERATION SOLVER_MODEL
 
@@ -405,7 +504,7 @@ for one element of the state vector. There are three constructors:
 
 - Default constructor (all variables under section Arguments are given;
   used to write/read the complete information).
-  
+
 - All variables under section Arguments are given with exception of startIndex
   (used for `EquationInfoStatus = CODE_GENERATION`).
 
@@ -421,13 +520,13 @@ for one element of the state vector. There are three constructors:
 - der_x_name_julia: Julia name of der_x-element in getDerivatives!/getResiduals! function
   or "" if not needed (since no code generation).
 - stateCategory::StateCategory: Category of the state
-- length: length of x-element (or -1 if not yet known) 
+- length: length of x-element (or -1 if not yet known)
 - unit: unit of XD, XALG (x_name) or XLAMBDA, XMUE (der_x_name) or "" if not yet known)
 - fixed: false (= guess value) or true (= not changed by initialization).
          Only relevant for ode=false, otherwise ignored.
 - nominal: Nominal value (NaN if determined via start value)
 - unbounded: false or true
-- startIndex: start index of x-element with respect to x-vector 
+- startIndex: start index of x-element with respect to x-vector
               or -1 if not yet known.
 """
 mutable struct StateElementInfo
@@ -438,28 +537,28 @@ mutable struct StateElementInfo
     der_x_name_julia              # Julia name of der_x-element in getDerivatives! function
                                   # or not needed (since no code generation)
     stateCategory::StateCategory  # category of the state
-    length::Int                   # length of x-element (or -1 if not yet known)       
+    length::Int                   # length of x-element (or -1 if not yet known)
     unit::String                  # unit of x-element as string (or "" if not yet known)
     fixed::Bool                   # false or true
     nominal::Float64              # nominal value (NaN if determined via start value)
     unbounded::Bool               # false or true
-    startIndex::Int               # start index of x-element with respect to x-vector 
+    startIndex::Int               # start index of x-element with respect to x-vector
                                   # or -1 if not yet known.
 end
 
-# Constructor for code-generation 
+# Constructor for code-generation
 StateElementInfo(x_name, x_name_julia, der_x_name, der_x_name_julia,
                  stateCategory, length, unit, fixed, nominal, unbounded) = StateElementInfo(
                  x_name, x_name_julia, der_x_name, der_x_name_julia,
                  stateCategory, length, unit, fixed, nominal, unbounded, -1)
 
 # Constructor for reading StateElementInfo after code-generation (x_name_julia and der_x_name_julia are not included
-StateElementInfo(x_name, der_x_name, 
+StateElementInfo(x_name, der_x_name,
                  stateCategory, length, unit, fixed, nominal, unbounded) = StateElementInfo(
                  x_name, :(), der_x_name, :(),
                  stateCategory, length, unit, fixed, nominal, unbounded, -1)
 
-# Constructor for manually generated equation info.					 
+# Constructor for manually generated equation info.
 StateElementInfo(x_name, der_x_name, stateCategory=XD; fixed=false, nominal=NaN, unbounded=false) =
     StateElementInfo(x_name, :(), der_x_name, :(), stateCategory, -1, "", fixed, nominal, unbounded, -1)
 
@@ -467,15 +566,15 @@ StateElementInfo(x_name, der_x_name, stateCategory=XD; fixed=false, nominal=NaN,
 function Base.show(io::IO, xe_info::StateElementInfo)
     print(io, "ModiaBase.StateElementInfo(")
     show( io, xe_info.x_name)
-	#print(io, ",")		
+	#print(io, ",")
     #show( io, xe_info.x_name_julia)
-	print(io, ",")			
+	print(io, ",")
     show( io, xe_info.der_x_name)
-	#print(io, ",")			
+	#print(io, ",")
     #show( io, xe_info.der_x_name_julia)
     print(io, ",ModiaBase.", xe_info.stateCategory)
     print(io, ",", xe_info.length)
-	print(io, ",")	
+	print(io, ",")
     show( io, xe_info.unit)
     print(io, ",", xe_info.fixed)
     print(io, ",", xe_info.nominal)
@@ -490,7 +589,7 @@ end
 
 """
     x_table = get_x_table(x_info::Vector{StateElementInfo}
-    
+
 Return the state element info as DataFrames.DataFrame table, for example
 to print it as:
 
@@ -500,11 +599,11 @@ show(x_table, allrows=true, allcols=true, summary=false, eltypes=false)
 """
 function get_x_table(x_info::Vector{StateElementInfo})
     x_table = DataFrames.DataFrame(name=String[], length=Int[], unit=String[], fixed=Bool[], nominal=Float64[], unbounded=Bool[])
-    
+
     for xe_info in x_info
         push!(x_table, (xe_info.x_name, xe_info.length, xe_info.unit, xe_info.fixed, xe_info.nominal, xe_info.unbounded))
     end
-    
+
     return x_table
 end
 
@@ -512,11 +611,11 @@ end
 """
     eqInfo = EquationInfo(;
                 status               = MANUAL,
-                ode                  = true, 
+                ode                  = true,
                 nz                   = 0,
                 x_info               = StateElementInfo[],
                 residualCategories   = ResidualCategory[],
-                linearEquations      = Tuple{Vector{String},Bool}[],             
+                linearEquations      = Tuple{Vector{String},Bool}[],
                 vSolvedWithFixedTrue = String[],
                 defaultParameterAndStartValues = nothing,
                 ResultType = nothing,
@@ -526,29 +625,29 @@ Return instance `eqInfo` that defines the information for the equation system.
 
 # Arguments
 - status::EquationInfoStatus: Defines the variables that have a value.
-- ode: = true if ODE-interface (`getDerivatives!`), 
+- ode: = true if ODE-interface (`getDerivatives!`),
        = false if DAE-interface (`getResiduals!`).
 - nz: Number of zero crossing functions.
-- x_info: Vector of StateElementInfo elements provding info for every x-element     
+- x_info: Vector of StateElementInfo elements provding info for every x-element
 - residualCategories: If ode=true, length(residualCategories) = 0.
              If ode=false: residualCategories[i] is the `ResidualCategory`](@ref) of x-element "i".
-- `linearEquations::Vector{Tuple{Vector{String},Vector{Int},Int,Bool}}`: 
-               linearEquations[i] defines a 
-               ModiaBase.LinearEquations system, where the first tuple value 
+- `linearEquations::Vector{Tuple{Vector{String},Vector{Int},Int,Bool}}`:
+               linearEquations[i] defines a
+               ModiaBase.LinearEquations system, where the first tuple value
                is a vector of the names of the unknowns, the second tuple value
                is a vector with the lengths of the unknowns, the third tuple value is the number
-               of residuals and the fourth tuple value 
+               of residuals and the fourth tuple value
                defines whether the coefficient matrix A
-               has only constant entries (=true) or not (=false).             
+               has only constant entries (=true) or not (=false).
 - `vSolvedWithFixedTrue::Vector{String}`: Vector of variables that are computed
                from other variables and have `fixed=true`. During initialization
                it is checked whether the calculated values and the start values of
-               these variables agree. If this is not the case, an error is triggered.   
+               these variables agree. If this is not the case, an error is triggered.
 - `defaultParameterAndStartValues`: Dictionary of default paramter and default start values.
 - `ResultType::AbstractModelValues`: ModelValues type that shall be used for the result generation
-               (= ModelValues struct without parameters).  
+               (= ModelValues struct without parameters).
 - `ResultTypeHasFloatType::Bool`: = false, if `ResultType` is not parameterized.
-                                  = true, if `ResultType` has parameter `FloatType`.               
+                                  = true, if `ResultType` has parameter `FloatType`.
 """
 mutable struct EquationInfo
     status::EquationInfoStatus
@@ -556,21 +655,22 @@ mutable struct EquationInfo
     nz::Int                                        # Number of crossing functions
     x_info::Vector{StateElementInfo}
     residualCategories::Vector{ResidualCategory}   # If ode=true, length(residualCategories) = 0
-                                                   # If ode=false, residualCategories[j] is the ResidualCategory of residual[j] 
+                                                   # If ode=false, residualCategories[j] is the ResidualCategory of residual[j]
     linearEquations::Vector{Tuple{Vector{String},Vector{Int},Int,Bool}}
     vSolvedWithFixedTrue::Vector{String}
     nx::Int                                        # = length(x) or -1 if not yet known
-    x_infoByIndex::Vector{Int}                     # i = x_infoByIndex[j] -> x_info[i] 
-                                                   # or empty vector, if not yet known.  
-    x_dict::OrderedCollections.OrderedDict{String,Int} # x_dict[x_name] returns the index of x_name with respect to x_info                                                  
+    x_infoByIndex::Vector{Int}                     # i = x_infoByIndex[j] -> x_info[i]
+                                                   # or empty vector, if not yet known.
+    x_dict::OrderedCollections.OrderedDict{String,Int}      # x_dict[x_name] returns the index of x_name with respect to x_info
+    der_x_dict::OrderedCollections.OrderedDict{String,Int}  # der_x_dict[der_x_name]  returns the index of der_x_name with respect to x_info
     defaultParameterAndStartValues::Union{AbstractDict,Nothing}
-    ResultType    
+    ResultType
     ResultTypeHasFloatType::Bool
 end
- 
- 
+
+
 EquationInfo(; status                = MANUAL,
-               ode                   = true, 
+               ode                   = true,
                nz                    = 0,
                x_info                = StateElementInfo[],
                residualCategories    = ResidualCategory[],
@@ -580,10 +680,11 @@ EquationInfo(; status                = MANUAL,
                x_infoByIndex         = Int[],
                defaultParameterAndStartValues::Union{AbstractDict,Nothing} = nothing,
                ResultType = nothing,
-               ResultTypeHasFloatType = false) = 
-               EquationInfo(status, ode, nz, x_info, 
-                            residualCategories, linearEquations, 
+               ResultTypeHasFloatType = false) =
+               EquationInfo(status, ode, nz, x_info,
+                            residualCategories, linearEquations,
                             vSolvedWithFixedTrue, nx, x_infoByIndex,
+                            OrderedCollections.OrderedDict{String,Int}(),
                             OrderedCollections.OrderedDict{String,Int}(),
                             defaultParameterAndStartValues,
                             ResultType, ResultTypeHasFloatType)
@@ -591,14 +692,16 @@ EquationInfo(; status                = MANUAL,
 
 """
     updateEquationInfo!(eqInfo::EquationInfo)
-    
-Set eqInfo.x_dict, eqInfo.nx and eqInfo.x_info[:].startIndex
+
+Set eqInfo.x_dict, eqInfo.der_x_dict, eqInfo.nx and eqInfo.x_info[:].startIndex
 """
 function updateEquationInfo!(eqInfo::EquationInfo)::Nothing
-    x_dict = eqInfo.x_dict
+    x_dict     = eqInfo.x_dict
+    der_x_dict = eqInfo.der_x_dict
     startIndex = 1
     for (i, xi_info) in enumerate(eqInfo.x_info)
         x_dict[xi_info.x_name] = i
+        der_x_dict[xi_info.der_x_name] = i
         xi_info.startIndex = startIndex
         startIndex += xi_info.length
     end
@@ -610,18 +713,28 @@ get_x_startIndexAndLength(eqInfo::EquationInfo, name::String) = begin
     xe_info = eqInfo.x_info[ eqInfo.x_dict[name] ]
     (xe_info.startIndex, xe_info.length)
 end
-            
-            
+
+
+"""
+    nvec = get_equationSizes(equationInfo)
+
+Return the sizes of the linear equations as `nvec::Vector{Int}`.
+(e.g. `nvec=[10,3]` means that there are two linear equation systems with
+size 10 and size 3).
+"""
+get_equationSizes(eqInfo::EquationInfo) = Int[leq[3] for leq in eqInfo.linearEquations]
+
+
 function Base.show(io::IO, eqInfo::EquationInfo; indent=4)
     indentation  = repeat(" ", indent)
     indentation2 = repeat(" ", 2*indent)
-    indentation3 = repeat(" ", 3*indent)	
+    indentation3 = repeat(" ", 3*indent)
     println(io, "ModiaBase.EquationInfo(")
     println(io, indentation2, "status = ModiaBase.", eqInfo.status, ",")
     println(io, indentation2, "ode = ", eqInfo.ode, ",")
     if eqInfo.nz > 0
         println(io, indentation2, "nz = ", eqInfo.nz, ",")
-    end    
+    end
     print(io, indentation2, "x_info = ModiaBase.StateElementInfo[")
     for (i, xe_info) in enumerate(eqInfo.x_info)
         if i == 1
@@ -632,7 +745,7 @@ function Base.show(io::IO, eqInfo::EquationInfo; indent=4)
         show(io, xe_info)
     end
     print(io,"]")
-    
+
     if length(eqInfo.residualCategories) > 0
         print(io, ",\n", indentation2, "residualCategories = [")
         for (i, rcat) in enumerate(eqInfo.residualCategories)
@@ -644,12 +757,12 @@ function Base.show(io::IO, eqInfo::EquationInfo; indent=4)
         print(io,"]")
     end
 
-    leqs = eqInfo.linearEquations 
+    leqs = eqInfo.linearEquations
     if length(leqs) > 0
         println(io, ",\n", indentation2, "linearEquations = [")
         for (i, leq) in enumerate(leqs)
-            print(io, indentation3, "(", leq[1], ",\n", 
-                      indentation3, " ", leq[2], ",\n", 
+            print(io, indentation3, "(", leq[1], ",\n",
+                      indentation3, " ", leq[2], ",\n",
                       indentation3, " ", leq[3], ", ", leq[4], ")")
             if i < length(leqs)
                 print(io, ",\n")
@@ -663,32 +776,32 @@ function Base.show(io::IO, eqInfo::EquationInfo; indent=4)
         print(io, ",\n", indentation2, "vSolvedWithFixedTrue = ")
         show(io, eqInfo.vSolvedWithFixedTrue)
     end
-    
+
     if eqInfo.nx > 0
         print(io, ",\n", indentation2, "nx = ", eqInfo.nx)
     end
-    
+
     if length(eqInfo.x_infoByIndex) > 0
         print(io, ",\n", indentation2, "x_infoByIndex = ")
-        show(io, eqInfo.x_infoByIndex) 
+        show(io, eqInfo.x_infoByIndex)
     end
-    
+
     if !isnothing(eqInfo.defaultParameterAndStartValues)
         print(io, ",\n", indentation2, "defaultParameterAndStartValues = ")
-        show(io, eqInfo.defaultParameterAndStartValues, indent=12, finalLineBreak=false) 
+        show(io, eqInfo.defaultParameterAndStartValues, indent=12, finalLineBreak=false)
     end
-    
+
     if !isnothing(eqInfo.ResultType)
         print(io, ",\n", indentation2, "ResultType = ")
-        show(io, eqInfo.ResultType) 
-        
+        show(io, eqInfo.ResultType)
+
         if eqInfo.ResultTypeHasFloatType
             print(io, ",\n", indentation2, "ResultTypeHasFloatType = ")
-            show(io, eqInfo.ResultTypeHasFloatType) 
+            show(io, eqInfo.ResultTypeHasFloatType)
         end
-    end    
-    
-    
+    end
+
+
     println(io, "\n", indentation, ")")
     return nothing
 end
@@ -697,7 +810,7 @@ end
 
 """
     names = get_stateNames(equationInfo::EquationInfo)
-    
+
 Return the names of the states defined in `equationInfo` as a Vector of strings.
 """
 get_stateNames(eqInfo::EquationInfo) = String[xi_info.x_name for xi_info in eqInfo.x_info]
@@ -705,7 +818,7 @@ get_stateNames(eqInfo::EquationInfo) = String[xi_info.x_name for xi_info in eqIn
 
 """
     names = get_xNames(eqInfo::EquationInfo)
-    
+
 Return the names of all elements of the x-vector as a vector of strings.
 """
 function get_xNames(eqInfo::EquationInfo)::Vector{String}
@@ -722,17 +835,17 @@ function get_xNames(eqInfo::EquationInfo)::Vector{String}
     return xNames
 end
 
-                
+
 
 #=
 """
     update_equationInfo!(eqInfo::EquationInfo)
-    
+
 Update equationInfo as needed for [`EquationInfoStatus`](@ref)` = SOLVER_MODEL`.
 """
 function update_equationInfo!(eqInfo::EquationInfo, modelValues::ModiaBase.AbstractModelValues)::Nothing
     x_info = eqInfo.x_info
-    
+
     if eqInfo.status == MANUAL
         # Determine length and unit
 		count = 0
@@ -747,9 +860,9 @@ function update_equationInfo!(eqInfo::EquationInfo, modelValues::ModiaBase.Abstr
 				count = count+1
 				continue
             end
-            
+
 	        xi_type        = fieldtype(typeof(component), name)
-			xi_numberType  = ModiaBase.numberType(xi_type)			
+			xi_numberType  = ModiaBase.numberType(xi_type)
             xi_info.unit   = replace(string(unit(xi_numberType)), " " => "*")
             xi_info.length = Base.length(xi_type)  # Base.length(::Type{<:Number})=1 is defined in ModiaBase, since not defined in Base
         end
@@ -757,8 +870,8 @@ function update_equationInfo!(eqInfo::EquationInfo, modelValues::ModiaBase.Abstr
 			error("Error in update_equationInfo!: x_info is wrong.\n",
 				  "x_info = $x_info")
 		end
-    end          
-   
+    end
+
     # Set startIndex in x_info and compute nx
     startIndex = 1
     for xi_info in x_info
@@ -767,7 +880,7 @@ function update_equationInfo!(eqInfo::EquationInfo, modelValues::ModiaBase.Abstr
     end
     nx = startIndex - 1
     eqInfo.nx = nx
-            
+
     # Set x_infoByIndex::Vector{Int}
     eqInfo.x_infoByIndex = zeros(Int,nx)
     i1 = 0
@@ -779,9 +892,9 @@ function update_equationInfo!(eqInfo::EquationInfo, modelValues::ModiaBase.Abstr
             eqInfo.x_infoByIndex[j] = i
         end
     end
-    
+
     eqInfo.status = SOLVER_MODEL
-		
+
     return nothing
 end
 =#
