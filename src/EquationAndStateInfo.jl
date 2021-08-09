@@ -275,9 +275,9 @@ leq.mode >  0: @assert(leq.odeMode || solve)
                end
 ```
 """
-LinearEquationsIteration(leq::LinearEquations, isInitial, time, timer) = LinearEquationsIteration(leq, isInitial, true, false, time, timer)
+LinearEquationsIteration(leq::LinearEquations, isInitial, time, timer; useAppend=false) = LinearEquationsIteration(leq, isInitial, true, false, time, timer, useAppend=useAppend)
 function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bool, solve::Bool,
-                                  isStoreResult::Bool, time, timer)::Bool where {FloatType}
+                                  isStoreResult::Bool, time, timer; useAppend::Bool=false)::Bool where {FloatType}
     mode = leq.mode
     nx   = length(leq.x)
     
@@ -302,6 +302,9 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
               leq.mode = -1   # Initialize leq and compute "residuals .= A*x - b"
            end
         end
+        if useAppend
+            empty!(leq.residuals)
+        end
         return true  # Continue while-loop
 
     elseif mode == -2
@@ -325,6 +328,9 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
         end
         leq.x        .= 0
         leq.mode      = 0      # Compute "residuals .= A*0 - b"
+        if useAppend
+            empty!(leq.residuals)
+        end        
         return true            # Continue while-loop
 
     elseif mode < -3 || mode > nx
@@ -340,6 +346,14 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
     residual_unitRanges = leq.residual_unitRanges
     residual_indices    = leq.residual_indices
 
+
+
+ if useAppend
+    if length(residuals) != length(x)
+        error("Function LinearEquationsIteration wrongly used:\n",
+              "length(leq.residuals) = ", length(leq.residuals), ", length(leq.x) = ", length(leq.x))
+    end 
+ elseif !useAppend
     if isInitial && mode == 0
         # Construct unit ranges for the residual variables vector to copy values into the residuals vector
         j = 1
@@ -365,6 +379,11 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
         end
     end
 
+    if length(residuals) != length(x)
+        error("Function LinearEquationsIteration wrongly used:\n",
+              "length(leq.residuals) = ", length(leq.residuals), ", length(leq.x) = ", length(leq.x))
+    end 
+    
     # Copy residual variable values to residuals vector
     index = 0
     for i = 1:nResiduals
@@ -376,7 +395,8 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             residuals[residual_unitRanges[i]] = res_value
         end
     end
-
+ end
+ 
     if mode == -1
         @assert(!leq.odeMode && !solve)
         return false   # Terminate while-loop (leq.residuals must be copied into DAE residuals)
@@ -389,6 +409,10 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             end
             leq.mode = 1
             x[1] = convert(FloatType, 1)
+            
+            if useAppend
+                empty!(leq.residuals)
+            end   
             return true
         end
 
@@ -402,6 +426,10 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
         if j < nx
             leq.mode += 1
             x[leq.mode] = convert(FloatType, 1)
+            
+            if useAppend
+                empty!(leq.residuals)
+            end               
             return true
         end
 
@@ -451,6 +479,10 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
     leq.success = true # Terminate for-loop at the beginning of the next iteration,
                        # provided no positive(..) call changes its value.
                        # (leq.success is set to false in positive(..), if the return value changes).
+
+    if useAppend
+        empty!(leq.residuals)
+    end                          
     return true
 
     @label ERROR
