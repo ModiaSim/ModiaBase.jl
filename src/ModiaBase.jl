@@ -16,6 +16,12 @@ const Date    = "2021-04-19"
 
 using Unitful
 
+# Fix bug of append!
+import MonteCarloMeasurements
+Base.append!(v::Vector{T}, s::T) where {T<:MonteCarloMeasurements.Particles}       = Base.push!(v,s)
+Base.append!(v::Vector{T}, s::T) where {T<:MonteCarloMeasurements.StaticParticles} = Base.push!(v,s)
+
+
 include("LinearIntegerEquations.jl")
 
 include("BLTandPantelidesUtilities.jl")
