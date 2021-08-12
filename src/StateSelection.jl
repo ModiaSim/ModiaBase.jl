@@ -919,7 +919,10 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
     # Add residual equations
     #   leq.residuals[i] = < equation in residual form >
     for (i,e) in enumerate(eq.eResiduals)
-        push!(while_body, eq.fc.getResidualEquationAST(e, :(_leq_mode.residual_value[$i]) ))
+        e_AST = eq.fc.getResidualEquationAST(e, :(_leq_mode.residual_value[$i]) )
+        if !isnothing(e_AST)
+            push!(while_body, e_AST)
+        end
     end
 
     # Generate LinearEquations data structure
