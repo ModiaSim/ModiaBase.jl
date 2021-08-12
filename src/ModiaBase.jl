@@ -16,10 +16,16 @@ const Date    = "2021-04-19"
 
 using Unitful
 
-# Fix bug of append!
+
 import MonteCarloMeasurements
+
+# Just temporary: should be removed
 Base.append!(v::Vector{T}, s::T) where {T<:MonteCarloMeasurements.Particles}       = Base.push!(v,s)
 Base.append!(v::Vector{T}, s::T) where {T<:MonteCarloMeasurements.StaticParticles} = Base.push!(v,s)
+
+# append! as needed in ModiaBase
+appendResidual!(v1::Vector{T}, s::T)          where {T} = push!(v1,s)
+appendResidual!(v1::Vector{T}, v2::Vector{T}) where {T} = append!(v1,v2)
 
 
 include("LinearIntegerEquations.jl")
