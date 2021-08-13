@@ -99,6 +99,8 @@ function makeDerVar(ex::Expr, parameters, inputs, evaluateParameters=false)
         end
     elseif ex.head == :.
         Symbol(ex)
+    elseif ex.head == :call # Don't change dot-notation for function calls
+        Expr(ex.head, ex.args[1], [makeDerVar(arg, parameters, inputs, evaluateParameters) for arg in ex.args[2:end]]...)
     else
         Expr(ex.head, [makeDerVar(arg, parameters, inputs, evaluateParameters) for arg in ex.args]...)
     end
@@ -259,7 +261,9 @@ findIncidence!(arr::Array{Any,1}, incidence::Array{Incidence,1}) = [findIncidenc
 findIncidence!(arr::Array{Expr,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
 function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
     if ex.head == :macrocall && ex.args[1] == Symbol("@u_str")
-        nothing    
+        nothing  
+    elseif isexpr(ex, :function)
+        nothing  
     elseif ex.head == :call
         if ex.args[1] == :der
             push!(incidence, ex) # der(x)
