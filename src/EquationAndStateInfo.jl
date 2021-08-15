@@ -354,6 +354,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
               "length(leq.residuals) = ", length(leq.residuals), ", length(leq.x) = ", length(leq.x))
     end 
  elseif !useAppend
+ #=
     if isInitial && mode == 0
         # Construct unit ranges for the residual variables vector to copy values into the residuals vector
         j = 1
@@ -378,6 +379,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             error("The length of the residuals vector (= $len_res) is not equal to the length of the x vector (= $nx)")
         end
     end
+=#
 
     if length(residuals) != length(x)
         error("Function LinearEquationsIteration wrongly used:\n",
@@ -385,6 +387,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
     end 
     
     # Copy residual variable values to residuals vector
+    #=
     index = 0
     for i = 1:nResiduals
         res_value = residual_value[i]
@@ -395,6 +398,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             residuals[residual_unitRanges[i]] = res_value
         end
     end
+    =#
  end
  
     if mode == -1
