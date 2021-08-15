@@ -985,7 +985,7 @@ end
 
 Generate the sorted equations
 """
-function sortEquations!(eq::EquationGraph)::Nothing
+function sortEquations!(eq::EquationGraph, Goriginal)::Nothing
     if eq.log
          println("Sort equations (BLT on all equations under the assumption that the ODE states are known).")
     #    println("\nSorted equations (BLT on all equations under\nthe assumption that the ODE states are known):")
@@ -997,11 +997,11 @@ function sortEquations!(eq::EquationGraph)::Nothing
     end
     
     # Matching of all equations
-    assign    = matching(eq.G, length(eq.A), eq.vActive)
+    assign    = matching(Goriginal, length(eq.A), eq.vActive)
     assignRev = revertAssociation(assign)
     
     # Sort equations and find strong components
-    blt = BLT(eq.G,assign)
+    blt = BLT(Goriginal,assign)
 
     # Generate AST of sorted equations
     for blt_i in blt
@@ -1193,7 +1193,8 @@ ordering at the beginning does not necessarily provide already the right orderin
 In this phase the information from the previous phase is used (that is the already determined
 tearing variables for systems of equations are utilized).  
 """
-function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
+function getSortedAndSolvedAST(Goriginal,     # Typically ::Vector{Vector{Int}}
+                               G,
                                BLT,   # Typically ::Vector{Vector{Int}}
                                assign::Vector{Int},
                                A::Vector{Int},
@@ -1456,7 +1457,7 @@ function getSortedAndSolvedAST(G,     # Typically ::Vector{Vector{Int}}
    
 
     # Sort equations and generate sorted AST (eq.AST)
-    sortEquations!(eq)
+    sortEquations!(eq, Goriginal)
 
 
     # Check that all ODE states have a start value
