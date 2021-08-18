@@ -441,7 +441,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
         if nx == 1
             x[1] = b[1]/A[1,1]
             if !isfinite(x[1])
-                error("Linear scalar equation system is singular resulting in: ", leq.vTear_names[1], " = ", x[1])
+                error("Linear scalar equation system is singular resulting in: ", leq.x_names[1], " = ", x[1])
             end
         else
             x .= b
@@ -467,7 +467,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
         if nx == 1
             x[1] = x[1]/A[1,1]
             if !isfinite(x[1])
-                error("Linear scalar equation system is singular resulting in: ", leq.vTear_names[1], " = ", x[1])
+                error("Linear scalar equation system is singular resulting in: ", leq.x_names[1], " = ", x[1])
             end
         else
             ldiv!(leq.luA, x)

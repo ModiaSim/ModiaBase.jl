@@ -931,7 +931,7 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
     # Construct for-loop
     leq_index = length(eq.equationInfo.linearEquations)
     while_loop = quote
-        local $(vAssigned_names...)
+        global $(vAssigned_names...)
         _leq_mode = _m.linearEquations[$leq_index]
         _leq_mode.mode = -3
         ModiaBase.TimerOutputs.@timeit _m.timer "LinearEquationsIteration" while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.solve_leq, _m.storeResult, _m.time, _m.timer, useAppend=true)
