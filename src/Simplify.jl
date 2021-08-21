@@ -51,6 +51,8 @@ function mult(x, y)
         y
     elseif y == 1 && ! isUnit(x)
         x  
+    elseif x == -1 && ! isUnit(y)
+        sub(0, y)  
     else
         :($x * $y)
     end
