@@ -194,9 +194,9 @@ and used in subsequent calls to solve the equation system.
                    = false: Immediately break while-loop after this function was terminated.
 
 
-# Variable `leq.mode::Int` on output if iterating=false
+# Enhancing efficiency
 
-Variable `leq.mode` can be accessed (read-only) in the body of the while-loop to enhance efficiency.
+Variable `leq.mode::Int` can be accessed (read-only) in the body of the while-loop to enhance efficiency.
 For example, if residuals are computed in a function and the function evaluation is expensive.
 
 ```
