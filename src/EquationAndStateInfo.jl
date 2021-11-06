@@ -275,9 +275,9 @@ leq.mode >  0: @assert(leq.odeMode || solve)
                end
 ```
 """
-LinearEquationsIteration(leq::LinearEquations, isInitial, time, timer; useAppend=false) = LinearEquationsIteration(leq, isInitial, true, false, time, timer, useAppend=useAppend)
+LinearEquationsIteration(leq::LinearEquations, isInitial, time, timer) = LinearEquationsIteration(leq, isInitial, true, false, time, timer)
 function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bool, solve::Bool,
-                                  isStoreResult::Bool, time, timer; useAppend::Bool=false)::Bool where {FloatType}
+                                  isStoreResult::Bool, time, timer)::Bool where {FloatType}
     mode = leq.mode
     nx   = length(leq.x)
     
@@ -302,9 +302,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
               leq.mode = -1   # Initialize leq and compute "residuals .= A*x - b"
            end
         end
-        if useAppend
-            empty!(leq.residuals)
-        end
+        empty!(leq.residuals)
         return true  # Continue while-loop
 
     elseif mode == -2
@@ -328,9 +326,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
         end
         leq.x        .= 0
         leq.mode      = 0      # Compute "residuals .= A*0 - b"
-        if useAppend
-            empty!(leq.residuals)
-        end        
+        empty!(leq.residuals)
         return true            # Continue while-loop
 
     elseif mode < -3 || mode > nx
@@ -346,60 +342,10 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
     residual_unitRanges = leq.residual_unitRanges
     residual_indices    = leq.residual_indices
 
-
-
- if useAppend
     if length(residuals) != length(x)
         error("Function LinearEquationsIteration wrongly used:\n",
               "length(leq.residuals) = ", length(leq.residuals), ", length(leq.x) = ", length(leq.x))
     end 
- elseif !useAppend
- #=
-    if isInitial && mode == 0
-        # Construct unit ranges for the residual variables vector to copy values into the residuals vector
-        j = 1
-        for i = 1:nResiduals
-            res_value = residual_value[i]
-            if typeof(res_value) <: Number
-                residual_indices[i] = j
-                j = j+1
-            else
-                len = length(res_value)
-                if length(res_value) == 0
-                    error("Residual variable value $i has length zero")
-                end
-                k = j+len-1
-                residual_unitRanges[i] = j:k
-                j = k+1
-            end
-        end
-
-        if j-1 != nx
-            len_res = j-1
-            error("The length of the residuals vector (= $len_res) is not equal to the length of the x vector (= $nx)")
-        end
-    end
-=#
-
-    if length(residuals) != length(x)
-        error("Function LinearEquationsIteration wrongly used:\n",
-              "length(leq.residuals) = ", length(leq.residuals), ", length(leq.x) = ", length(leq.x))
-    end 
-    
-    # Copy residual variable values to residuals vector
-    #=
-    index = 0
-    for i = 1:nResiduals
-        res_value = residual_value[i]
-        index     = residual_indices[i]
-        if index > 0
-            residuals[index] = res_value
-        else
-            residuals[residual_unitRanges[i]] = res_value
-        end
-    end
-    =#
- end
  
     if mode == -1
         @assert(!leq.odeMode && !solve)
@@ -413,10 +359,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             end
             leq.mode = 1
             x[1] = convert(FloatType, 1)
-            
-            if useAppend
-                empty!(leq.residuals)
-            end   
+            empty!(leq.residuals)
             return true
         end
 
@@ -430,10 +373,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
         if j < nx
             leq.mode += 1
             x[leq.mode] = convert(FloatType, 1)
-            
-            if useAppend
-                empty!(leq.residuals)
-            end               
+            empty!(leq.residuals)            
             return true
         end
 
@@ -484,9 +424,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
                        # provided no positive(..) call changes its value.
                        # (leq.success is set to false in positive(..), if the return value changes).
 
-    if useAppend
-        empty!(leq.residuals)
-    end                          
+    empty!(leq.residuals)
     return true
 
     @label ERROR
