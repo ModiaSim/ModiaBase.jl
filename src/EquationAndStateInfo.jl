@@ -58,11 +58,15 @@ const niter_max = 20  # Maximum number of fixed-point iterations to solve A*x = 
 
 """
     leq = LinearEquations{FloatType}(vTear_names::Vector{String},  vTear_lengths::Vector{Int},
-                                     nResiduals::Int, A_is_constant::Bool)
+                                     nResiduals::Int, A_is_constant::Bool;
+                                     nxRecursiveFactorization = 0)
 
 Define linear equation system "A*x=b" with `length(x) = sum(vTear_lengths)`.
 If `A_is_constant = true` then `A` is a matrix that is constant after
-initialization.
+initialization. 
+
+If length(x) <= nxRecursiveFactorization, then linear equation systems will be solved with
+`RecursiveFactorization.jl` instead of the default `lu!(..)` and `ldiv!(..)`.
 
 For details of its usage for code generation see [`LinearEquationsIteration`](@ref).
 """
@@ -99,19 +103,18 @@ mutable struct LinearEquations{FloatType <: Real}
     
     function LinearEquations{FloatType}(vTear_names::Vector{String}, vTear_lengths::Vector{Int},
                                         nResiduals::Int, A_is_constant::Bool;
-                                        recursiveFactorization::Union{Bool,Missing} = missing) where {FloatType <: Real}
+                                        nxRecursiveFactorization::Int = 0) where {FloatType <: Real}
         @assert(length(vTear_names) > 0)
         @assert(length(vTear_names) == length(vTear_lengths))
         nx = sum(vTear_lengths)
         @assert(nx > 0)
         state = -1
+        recursiveFactorization = nx <= nxRecursiveFactorization
         
-        # Use RecursiveFactorization.jl if at most 500 equations
-        recursiveFactorization2 = ismissing(recursiveFactorization) ? nx <= 500 : recursiveFactorization
         new(A_is_constant, vTear_names, vTear_lengths, zeros(FloatType,nx), nResiduals, 
             zeros(FloatType,nx,nx), zeros(FloatType,nx), fill(0,nx), zeros(FloatType,nx),
             Vector{Any}(undef,nResiduals), -4, -1, niter_max, false, String[], String[],
-            fill(0:0,nResiduals), fill(0,nResiduals), recursiveFactorization2)
+            fill(0:0,nResiduals), fill(0,nResiduals), recursiveFactorization)
     end
 end
 LinearEquations(args...) = LinearEquations{Float64}(args...)
