@@ -13,6 +13,7 @@ It is used by [Modia](https://github.com/ModiaSim/Modia.jl),
 but can also be utilized in another context. Especially the following functionality is provided:
 
 - Simplify linear Integer equations (many equations of object-oriented models are linear Integer equations and can be pre-processed exactly)
+
   o to remove alias variables and equations,
   o to remove redundant equations,
   o to provide definite values for variables that have an infinite number of solutions if this makes sense,
