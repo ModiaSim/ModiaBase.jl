@@ -23,30 +23,27 @@ variable ``t`` (= usually time). ``x_{dae}`` is the DAE state vector,
 The equations are hereby represented as a vector of Julia expressions,
 that is of an Abstract Syntax Tree (AST).
 
-These functions are used by package [TinyModia](https://github.com/ModiaSim/TinyModia.jl),
-but can also be utilized in another context.
+These functions are used by package [Modia](https://github.com/ModiaSim/Modia.jl),
+but can also be utilized in another context. Especially the following functionality is provided:
 
-Especially the following functionality is provided:
-
+- Simplify linear Integer equations (many equations of object-oriented models are linear Integer equations and can be pre-processed exactly)
+  - to remove alias variables and equations,
+  - to remove redundant equations,
+  - to provide definite values for variables that have an infinite number of solutions if this makes sense,
+  - to make state constraints structurally visible.
+  
 - Find a variable assignment of an equation system, in order
   to transform the equation system in a directed graph that can be further
   processed.
-
+  
 - Find the strong components in a directed graph (with the algorithm of Tarjan)
-  in order to find algebraic equation systems that must be solved together.
+  to determine algebraic equation systems that must be solved together.
 
-- Sort an equation system (= transform to Block Lower Triangular form), in order
-  determine the order in which the equations have to be evaluated.
-
-- Simplify linear Integer equations (remove alias variables/equations as well as redundant equations,
-  provide definite values to variables that have an infinite number of solutions if this makes sense,
-  make state constraints structurally visible).
-  Many equations of object-oriented models are linear Integer equations and can be pre-processed
-  exactly to simplify the equations and to remove (consistently) redundant or
-  overdetermined equations.
-
+- Sort an equation system (= transform to Block Lower Triangular form), 
+  to determine the order in which the equations have to be evaluated.
+  
 - Reduce the dimension of algebraic equation systems by tearing.
-
+ 
 - Find equations that need to be differentiated one or more times (with the algorithm of Pantelides)
   in order that the DAE can be transformed to an ODE.
 
@@ -54,18 +51,16 @@ Especially the following functionality is provided:
 
 - Statically select ODE states and transform to ODE form
   (hereby identifying linear equation systems that must be solved during simulation).
-
-Transformation from a DAE to an ODE form is performed if no nonlinear-algebraic equations
+  
+Transformation from a DAE to an ODE form is (currently) performed if no nonlinear-algebraic equations
 appear and the ODE-states can be statically selected.
 
 Array variables and array equations are kept (they are not "flattened" in single elements).
 However, DAE forms that require to differentiate array equations, are not yet supported.
 
-The following extensions are planned for the near future (a "few months"; most of the code is
-available but must be adapted to ModiaBase):
+The following extensions are planned (internal prototypes are available):
 
 - Full support of array equations.
-- State- and time events.
 - If transformation to an ODE is not possible with the algorithms above,
   transformation to a special index 1 DAE, that
   can be simulated with standard DAE solvers (such as Sundials IDA).
@@ -143,5 +138,7 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ## Main developers
 
-- Hilding Elmqvist (Mogram AB)
-- Martin Otter ([DLR - Institute of System Dynamics and Control](https://www.dlr.de/sr/en)
+- [Hilding Elmqvist](mailto:Hilding.Elmqvist@Mogram.net), [Mogram](http://www.mogram.net/).
+
+- [Martin Otter](https://rmc.dlr.de/sr/en/staff/martin.otter/),
+  [DLR - Institute of System Dynamics and Control](https://www.dlr.de/sr/en)
