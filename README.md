@@ -15,7 +15,7 @@ but can also be utilized in another context. Especially the following functional
 - Simplify linear Integer equations (many equations of object-oriented models are linear Integer equations and can be pre-processed exactly)
   - to remove alias variables and equations,
   - to remove redundant equations,
-  - to provide definite values for variables that have an infinite number of solutions if this makes sense,
+  - to provide definite values for variables that can have arbitrary values if this makes sense,
   - to make state constraints structurally visible.
   
 - Find a variable assignment of an equation system, in order

@@ -1,7 +1,7 @@
 # Tutorial
 
 This chapter contains a short tutorial about the data structures and
-functions provided by package ModiaBase.
+functions provided by package [ModiaBase](https://github.com/ModiaSim/ModiaBase.jl).
 
 
 ## 1. Regular DAEs (Index Zero DAEs)
