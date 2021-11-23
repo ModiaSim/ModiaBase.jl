@@ -38,16 +38,49 @@ C.i        = -(V.p.i)
 Ri.i       = V.p.i
 V.v        = Ri.n.v
 Ri.n.i     = -(V.p.i)</code></pre><h3 id=".3-Assignment"><a class="docs-heading-anchor" href="#.3-Assignment">1.3 Assignment</a><a id=".3-Assignment-1"></a><a class="docs-heading-anchor-permalink" href="#.3-Assignment" title="Permalink"></a></h3><p>In a follow-up step, an assignment is made (also called matching), to associate one variable uniquely with one equation:</p><p><img src="../resources/images/LowPassFilterReduced_Matching.png" alt="Matched IIncidence Matrix of Low Pass Filter"/></p><ul><li><em>Red</em> marks show the assigned variables.</li><li><em>Blue</em> marks show if a variable is part of the respective equation</li></ul><p>The assignment is computed with function <a href="EquationSorting.html#ModiaBase.BLTandPantelides.matching"><code>ModiaBase.matching</code></a> returning a vector <code>assign</code>:</p><pre><code class="language-julia hljs">using ModiaBase
-M          = 7  # Number of variables
-vActive    = fill(true,M)
+vActive    = fill(true,7)
 vActive[5] = false    # state C.v is known
-assign     = matching(G, M, vActive)
+assign     = matching(G, 7, vActive)
 
-# assign = [2,6,3,1,0,5,4]</code></pre><p>The meaning of vector <code>assign</code> is that</p><ul><li>Variable 1 is solved from equation 2,</li><li>Variable 2 is solved from equation 6,</li><li>etc.</li></ul><h3 id=".4-Block-Lower-Triangular-transformation"><a class="docs-heading-anchor" href="#.4-Block-Lower-Triangular-transformation">1.4 Block Lower Triangular transformation</a><a id=".4-Block-Lower-Triangular-transformation-1"></a><a class="docs-heading-anchor-permalink" href="#.4-Block-Lower-Triangular-transformation" title="Permalink"></a></h3><p>In a follow-up step, equations are sorted and algebraic loops determined:</p><p><img src="../resources/images/LowPassFilterReduced_BLT.png" alt="Incidence Matrix of sorted equations of Low Pass Filter"/></p><ul><li><em>Red</em> marks show the assigned variables.</li><li><em>Blue</em> marks show if a variable is part of the respective equation</li><li>A <em>grey</em> area marks an algebraic loop.</li></ul><p>The sorting is computed with function <a href="EquationSorting.html#ModiaBase.BLTandPantelides.BLT"><code>ModiaBase.BLT</code></a>:</p><pre><code class="language-julia hljs">using ModiaBase
+# assign = [2,6,3,1,0,5,4]</code></pre><p>The meaning of vector <code>assign</code> is that</p><ul><li>Variable 1 is solved from equation 2,</li><li>Variable 2 is solved from equation 6,</li><li>etc.</li></ul><h3 id=".4-Sorting"><a class="docs-heading-anchor" href="#.4-Sorting">1.4 Sorting</a><a id=".4-Sorting-1"></a><a class="docs-heading-anchor-permalink" href="#.4-Sorting" title="Permalink"></a></h3><p>In a follow-up step, equations are sorted and algebraic loops determined (= Block Lower Triangular transformation):</p><p><img src="../resources/images/LowPassFilterReduced_BLT.png" alt="Incidence Matrix of sorted equations of Low Pass Filter"/></p><ul><li><em>Red</em> marks show the assigned variables.</li><li><em>Blue</em> marks show if a variable is part of the respective equation</li><li>A <em>grey</em> area marks an algebraic loop.</li></ul><p>The sorting is computed with function <a href="EquationSorting.html#ModiaBase.BLTandPantelides.BLT"><code>ModiaBase.BLT</code></a>:</p><pre><code class="language-julia hljs">using ModiaBase
 blt = BLT(G, assign)
 
 #=
     blt = [ [6],
             [3,4,2,1],
             [5] ]
-=#</code></pre><p>The meaning is for example that the second BLT block consists of equations 3,4,2,1 and these equations form an algebraic loop.</p><h2 id=".-Singular-DAEs-(Higher-Index-DAEs)"><a class="docs-heading-anchor" href="#.-Singular-DAEs-(Higher-Index-DAEs)">2. Singular DAEs (Higher Index DAEs)</a><a id=".-Singular-DAEs-(Higher-Index-DAEs)-1"></a><a class="docs-heading-anchor-permalink" href="#.-Singular-DAEs-(Higher-Index-DAEs)" title="Permalink"></a></h2><p>xxx</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="index.html">« Home</a><a class="docs-footer-nextpage" href="DataStructures.html">Data Structures »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.10 on <span class="colophon-date" title="Sunday 14 November 2021 14:31">Sunday 14 November 2021</span>. Using Julia version 1.6.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+=#</code></pre><p>The meaning is for example that the second BLT block consists of equations 3,4,2,1 and these equations form an algebraic loop.</p><h3 id=".5-Reducing-sizes-of-equation-systems"><a class="docs-heading-anchor" href="#.5-Reducing-sizes-of-equation-systems">1.5 Reducing sizes of equation systems</a><a id=".5-Reducing-sizes-of-equation-systems-1"></a><a class="docs-heading-anchor-permalink" href="#.5-Reducing-sizes-of-equation-systems" title="Permalink"></a></h3><p>In a follow-up step, the sizes of equation systems are reduced by variable substitution (= tearing). Applying <a href="EquationReduction.html#ModiaBase.tearEquations!"><code>ModiaBase.tearEquations!</code></a> to the  low pass filter circuit, reduces the dimension of BLT block 2 from size 4 to size 1 resulting in the following equation system:</p><pre><code class="language-julia hljs"># iteration variables (inputs): C.i
+# residual variables (outputs): residual
+
+R.v := R.R*C.i
+R.i.v := -Ri.R*C.i
+R.p.v := Ri.v + V.v
+residual := R.v - R.p.v + C.v</code></pre><h3 id=".6-Generation-of-AST"><a class="docs-heading-anchor" href="#.6-Generation-of-AST">1.6 Generation of AST</a><a id=".6-Generation-of-AST-1"></a><a class="docs-heading-anchor-permalink" href="#.6-Generation-of-AST" title="Permalink"></a></h3><p>In a final step, the AST (Abstract Syntax Tree) of the model is generated. Hereby, it is determined that the equation system of section 1.4 and 1.5 is linear in the iteration variable (<code>C.i</code>) and an AST is generated to build-up a linear equation system <code>A*C.i = b</code> and solve this system numerically with an LU decomposition whenever the AST is called (if the equation system has size 1,  a simple division is used instead of calling a linear equation solver). Applying <a href="TransformationToODEs.html#ModiaBase.getSortedAndSolvedAST"><code>ModiaBase.getSortedAndSolvedAST</code></a> results basically in a function <code>getDerivatives</code> that can be solved with the many ODE integrators of <a href="https://github.com/SciML/DifferentialEquations.jl">DifferentialEquations.jl</a>:</p><pre><code class="language-julia hljs">function getDerivatives(_der_x, _x, _m, _time)::Nothing
+    _m.time = ModiaLang.getValue(_time)
+    _m.nGetDerivatives += 1
+    instantiatedModel = _m
+    _p = _m.evaluatedParameters
+    _leq_mode = nothing
+    time = _time
+    var&quot;C.v&quot; = _x[1]
+    var&quot;V.v&quot; = (_p[:V])[:V]
+    begin
+        local var&quot;C.i&quot;, var&quot;R.v&quot;, var&quot;Ri.v&quot;, var&quot;R.p.v&quot;
+        _leq_mode = _m.linearEquations[1]
+        _leq_mode.mode = -2
+        while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.time, _m.timer)
+            var&quot;C.i&quot; = _leq_mode.vTear_value[1]
+            var&quot;R.v&quot; = (_p[:R])[:R] * var&quot;C.i&quot;
+            var&quot;Ri.v&quot; = (_p[:Ri])[:R] * -var&quot;C.i&quot;
+            var&quot;R.p.v&quot; = var&quot;Ri.v&quot; + var&quot;V.v&quot;
+            _leq_mode.residual_value[1] = (var&quot;R.v&quot; + -1var&quot;R.p.v&quot;) + var&quot;C.v&quot;
+        end
+        _leq_mode = nothing
+    end
+    var&quot;der(C.v)&quot; = var&quot;C.i&quot; / (_p[:C])[:C]
+    _der_x[1] = var&quot;der(C.v)&quot;
+    if _m.storeResult
+        ModiaLang.addToResult!(_m, _der_x, time, var&quot;R.v&quot;, var&quot;R.p.v&quot;, var&quot;Ri.v&quot;, var&quot;C.i&quot;, var&quot;V.v&quot;)
+    end
+    return nothing
+end</code></pre><h2 id=".-Singular-DAEs-(Higher-Index-DAEs)"><a class="docs-heading-anchor" href="#.-Singular-DAEs-(Higher-Index-DAEs)">2. Singular DAEs (Higher Index DAEs)</a><a id=".-Singular-DAEs-(Higher-Index-DAEs)-1"></a><a class="docs-heading-anchor-permalink" href="#.-Singular-DAEs-(Higher-Index-DAEs)" title="Permalink"></a></h2><p>xxx</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="index.html">« Home</a><a class="docs-footer-nextpage" href="DataStructures.html">Data Structures »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.10 on <span class="colophon-date" title="Tuesday 23 November 2021 23:02">Tuesday 23 November 2021</span>. Using Julia version 1.6.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
