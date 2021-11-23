@@ -83,6 +83,21 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ## Release Notes
 
+### Version 0.7.6
+
+- Solve linear equation systems optionally with [RecursiveFactorization.jl](https://github.com/YingboMa/RecursiveFactorization.jl) 
+  instead of the default `lu!(..)` and `ldiv!(..)`.
+
+- Project.toml: Changed DiffRules from "~1.0" to "1", since issue with "1.2.1" 
+  (leading to an error in runtests) seems to be fixed.
+  
+- Project.toml: Added version 1 of MonteCarloMeasurements.
+  
+- Updated used packages.
+
+- Tutorial slightly improved.
+
+
 ### Version 0.7.5
 
 - Added a restriction, so that DiffRules 1.0.2 is used, instead of 1.2.1 (which leads to an error in the test suite).
