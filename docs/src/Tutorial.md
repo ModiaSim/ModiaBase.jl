@@ -134,10 +134,9 @@ returning a vector `assign`:
 
 ```julia
 using ModiaBase
-M          = 7  # Number of variables
-vActive    = fill(true,M)
+vActive    = fill(true,7)
 vActive[5] = false    # state C.v is known
-assign     = matching(G, M, vActive)
+assign     = matching(G, 7, vActive)
 
 # assign = [2,6,3,1,0,5,4]
 ```
@@ -149,9 +148,10 @@ The meaning of vector `assign` is that
 - etc.
 
 
-### 1.4 Block Lower Triangular transformation
+### 1.4 Sorting
 
-In a follow-up step, equations are sorted and algebraic loops determined:
+In a follow-up step, equations are sorted and algebraic loops determined
+(= Block Lower Triangular transformation):
 
 ![Incidence Matrix of sorted equations of Low Pass Filter](../resources/images/LowPassFilterReduced_BLT.png)
 
@@ -175,6 +175,68 @@ blt = BLT(G, assign)
 The meaning is for example that the second BLT block consists of
 equations 3,4,2,1 and these equations form an algebraic loop.
 
+
+### 1.5 Reducing sizes of equation systems
+
+In a follow-up step, the sizes of equation systems are reduced by
+variable substitution (= tearing). Applying [`ModiaBase.tearEquations!`](@ref) to the 
+low pass filter circuit, reduces the dimension of BLT block 2 from size 4 to size 1
+resulting in the following equation system:
+
+```julia
+# iteration variables (inputs): C.i
+# residual variables (outputs): residual
+
+R.v := R.R*C.i
+R.i.v := -Ri.R*C.i
+R.p.v := Ri.v + V.v
+residual := R.v - R.p.v + C.v
+```
+
+
+### 1.6 Generation of AST
+
+In a final step, the AST (Abstract Syntax Tree) of the model is
+generated. Hereby, it is determined that the equation system of section 1.4 and 1.5
+is linear in the iteration variable (`C.i`) and an AST is generated
+to build-up a linear equation system `A*C.i = b` and solve this system numerically
+with an LU decomposition whenever the AST is called (if the equation system has size 1, 
+a simple division is used instead of calling a linear equation solver). Applying
+[`ModiaBase.getSortedAndSolvedAST`](@ref) results basically in a function
+`getDerivatives` that can be solved with the many ODE integrators of
+[DifferentialEquations.jl](https://github.com/SciML/DifferentialEquations.jl):
+
+```julia
+function getDerivatives(_der_x, _x, _m, _time)::Nothing
+    _m.time = ModiaLang.getValue(_time)
+    _m.nGetDerivatives += 1
+    instantiatedModel = _m
+    _p = _m.evaluatedParameters
+    _leq_mode = nothing
+    time = _time
+    var"C.v" = _x[1]
+    var"V.v" = (_p[:V])[:V]
+    begin
+        local var"C.i", var"R.v", var"Ri.v", var"R.p.v"
+        _leq_mode = _m.linearEquations[1]
+        _leq_mode.mode = -2
+        while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.time, _m.timer)
+            var"C.i" = _leq_mode.vTear_value[1]
+            var"R.v" = (_p[:R])[:R] * var"C.i"
+            var"Ri.v" = (_p[:Ri])[:R] * -var"C.i"
+            var"R.p.v" = var"Ri.v" + var"V.v"
+            _leq_mode.residual_value[1] = (var"R.v" + -1var"R.p.v") + var"C.v"
+        end
+        _leq_mode = nothing
+    end
+    var"der(C.v)" = var"C.i" / (_p[:C])[:C]
+    _der_x[1] = var"der(C.v)"
+    if _m.storeResult
+        ModiaLang.addToResult!(_m, _der_x, time, var"R.v", var"R.p.v", var"Ri.v", var"C.i", var"V.v")
+    end
+    return nothing
+end
+```
 
 
 ## 2. Singular DAEs (Higher Index DAEs)
