@@ -85,7 +85,7 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ### Version 0.7.6
 
-- Fixed bug: If unitless=true, no unit is associated with the tearing variable.
+- Fixed bug in StateSelection.jl: If unitless=true, no unit is associated with the tearing variable.
 
 - Solve linear equation systems optionally with [RecursiveFactorization.jl](https://github.com/YingboMa/RecursiveFactorization.jl) 
   instead of the default `lu!(..)` and `ldiv!(..)`.
