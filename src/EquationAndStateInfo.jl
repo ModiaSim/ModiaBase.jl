@@ -326,7 +326,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             end
         else
             x .= b
-            if leq.recursiveFactorization
+            if leq.useRecursiveFactorization
                 ModiaBase.TimerOutputs.@timeit timer "solve A*x=b (RecursiveFactorization)" begin
                     leq.luA = RecursiveFactorization.lu!(A, leq.pivots)
                     ldiv!(leq.luA, x)
