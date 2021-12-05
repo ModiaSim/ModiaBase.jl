@@ -1,7 +1,7 @@
 name = "ModiaBase"
 uuid = "ec7bf1ca-419d-4510-bbab-199861c55244"
 authors = ["Hilding Elmqvist <Hilding.Elmqvist@Mogram.net>", "Martin Otter <Martin.Otter@dlr.de>"]
-version = "0.8.0-dev"
+version = "0.7.8-dev"
 
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
@@ -16,7 +16,7 @@ Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
 DataFrames = "1, 0.22, 0.21, 0.20, 0.19"
-DiffRules = "1"
+DiffRules = "~1.0"
 Measurements = "2"
 MonteCarloMeasurements = "1, 0.10, 0.9"
 OrderedCollections = "1"
