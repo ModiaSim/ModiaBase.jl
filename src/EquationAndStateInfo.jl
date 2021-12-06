@@ -58,19 +58,23 @@ const niter_max = 20  # Maximum number of fixed-point iterations to solve A*x = 
 
 """
     leq = LinearEquations{FloatType}(x_names::Vector{String},  x_lengths::Vector{Int},
-                                     nResiduals::Int, A_is_constant::Bool)
+                                     nResiduals::Int, A_is_constant::Bool;
+                                     useRecursiveFactorizationUptoSize = 0)
 
 Define linear equation system "A*x=b" with `x::Vector{FloatType}`.
 
-- `x` is constructed from a set of scalar or arrays variables i with names `x_names[i]`
+- `x` is constructed from a set of scalar or vector variables i with names `x_names[i]`
    and length `x_length[i]` (that is `length(x) = sum(x_lengths)`).
 
-- The residuals are constructed from a set of `nResidual` scalar or array variables.
-  During code generation, it is not possible to determine the sizes of these variables.
+- The residuals are constructed from a set of `nResidual` scalar or vector variables.
+  During code generation, it is not possible to determine the overall size of the residual vector.
   This information is only available at runtime (when function LinearEquationsIteration(..)
   is called with isInitial = true).
 
 - If `A_is_constant = true` then `A` is a matrix that is constant after initialization.
+
+- If length(x) <= useRecursiveFactorizationUptoSize, then linear equation systems will be solved with
+  `RecursiveFactorization.jl` instead of the default `lu!(..)` and `ldiv!(..)`.
 
 For details how to use this constructor, see [`LinearEquationsIteration`](@ref).
 """
@@ -107,26 +111,23 @@ mutable struct LinearEquations{FloatType <: Real}
     inconsistentNegative::Vector{String}
 
     # Constructed during initialization
-    residual_unitRanges::Vector{UnitRange{Int}} # residuals[residual_unitRanges[i]] = residual_value[i], if residual is a vector
-    residual_indices::Vector{Int}               # residuals[residual_indices[i]] = residual_value[i], if residual is a scalar
-    recursiveFactorization::Bool                # = true, if RecursiveFactorization.jl shall be used to solve the linear equation system
+    useRecursiveFactorization::Bool             # = true, if RecursiveFactorization.jl shall be used to solve the linear equation system
 
     luA::LU{FloatType,Array{FloatType,2}}       # lu-Decomposition of A
 
     function LinearEquations{FloatType}(x_names::Vector{String}, x_lengths::Vector{Int},
                                         nResiduals::Int, A_is_constant::Bool;
-                                        recursiveFactorization::Union{Bool,Missing} = missing) where {FloatType <: Real}
+                                        useRecursiveFactorizationUptoSize::Int = 0) where {FloatType <: Real}
         @assert(length(x_names) > 0)
         @assert(length(x_names) == length(x_lengths))
         nx = sum(x_lengths)
         @assert(nx > 0)
+        useRecursiveFactorization = nx <= useRecursiveFactorizationUptoSize        
 
-        # Use RecursiveFactorization.jl if at most 500 equations
-        recursiveFactorization2::Bool = ismissing(recursiveFactorization) ? nx <= 500 : recursiveFactorization
         new(true, A_is_constant, x_names, x_lengths, zeros(FloatType,nx), nResiduals,
             zeros(FloatType,nx,nx), zeros(FloatType,nx), fill(0,nx), zeros(FloatType,nx),
             Vector{Any}(undef,nResiduals), -2, 0, niter_max, false, String[], String[],
-            fill(0:0,nResiduals), fill(0,nResiduals), recursiveFactorization2)
+            useRecursiveFactorization)
     end
 end
 LinearEquations(args...) = LinearEquations{Float64}(args...)
@@ -180,9 +181,9 @@ and used in subsequent calls to solve the equation system.
 - `leq::LinearEquations{FloatType}`: Instance of `LinearEquations`.
 - `isInitial::Bool`: = true: Called during initialization.
 - `solve::Bool`: = true: leq.x is computed by LinearEquationsIteration.
-                     = false: leq.x has been set by calling environment 
-                              (typically when called from DAE integrator).
-                               Note, at events and at terminate, solve must be true).
+                 = false: leq.x has been set by calling environment 
+                          (typically when called from DAE integrator).
+                          Note, at events and at terminate, solve must be true).
 - `isStoreResult::Bool`: = true: Called at a communication point (store results).
 - `time`: Actual time instant (only used for warning/error messages).
 - `timer::TimerOutputs.TimerOutput`: Timer used to measure the solution of the linear equation system.
@@ -339,8 +340,6 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
     nResiduals          = leq.nResiduals
     residuals           = leq.residuals
     residual_value      = leq.residual_value
-    residual_unitRanges = leq.residual_unitRanges
-    residual_indices    = leq.residual_indices
 
     if length(residuals) != length(x)
         error("Function LinearEquationsIteration wrongly used:\n",
@@ -385,7 +384,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             end
         else
             x .= b
-            if leq.recursiveFactorization
+            if leq.useRecursiveFactorization
                 ModiaBase.TimerOutputs.@timeit timer "solve A*x=b (RecursiveFactorization)" begin
                     leq.luA = RecursiveFactorization.lu!(A, leq.pivots)
                     ldiv!(leq.luA, x)

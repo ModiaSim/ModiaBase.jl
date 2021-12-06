@@ -870,7 +870,7 @@ end
 
 
 """
-    addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)
+    addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool, unitless::Bool)
 
 A linear equation system is solved. Push this information to
 eq.SortedEquations. Furthermore, generate the AST for a for-loop that builds
@@ -878,7 +878,7 @@ and solves a linear equation system A*x = b
 from the solved equations and the residual equations,
 and push this information to eq.SortedEquations.AST.
 """
-function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::Nothing
+function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool, unitless::Bool)::Nothing
     # Construct body of for-loop
     empty!(eq.AST_aux)
     while_body = eq.AST_aux
@@ -886,13 +886,18 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool)::
     vTear_lengths = Int[] 
 
     # Assign iteration variables
-    #   v_i = leq.x[i]
+    #   unitless = false:
+    #     v_i = leq.x[i]
+    #
+    #   unitless = true:
+    #     v_i = leq.x[i]*@u_str($v_unit)
+    #   
     vAssigned_names = Any[]
     i1 = 0
     i2 = 0
     for (i,v) in enumerate(eq.vTear)
         v_name   = eq.fc.var_julia_name(v)
-        v_unit   = eq.fc.var_unit(v)
+        v_unit   = unitless ? "" : eq.fc.var_unit(v)
         v_length = eq.fc.var_length(undifferentiated(eq,v)) 
         i1 = i2 + 1
         i2 = i1 + v_length - 1
@@ -1396,7 +1401,7 @@ function getSortedAndSolvedAST(Goriginal,     # Typically ::Vector{Vector{Int}}
                     end
 
                     # Generate AST to build-up and solve linear equation system of the teared equations
-                    addLinearEquations!(eq, hasConstantCoefficients)
+                    addLinearEquations!(eq, hasConstantCoefficients, unitless)
 
 
                 else

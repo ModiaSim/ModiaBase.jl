@@ -9,25 +9,18 @@ Main module of ModiaBase.
 module ModiaBase
 
 const path    = dirname(dirname(@__FILE__))   # Absolute path of package directory
-const Version = "0.7.2-dev"
-const Date    = "2021-04-19"
+const Version = "0.8.0-dev"
+const Date    = "2021-12-04"
 
 #println("\nImporting ModiaBase Version $Version ($Date)")
 
 using Unitful
-
-
-import MonteCarloMeasurements
 import StaticArrays
 
-# Just temporary: should be removed
-Base.append!(v::Vector{T}, s::T) where {T<:MonteCarloMeasurements.Particles}       = Base.push!(v,s)
-Base.append!(v::Vector{T}, s::T) where {T<:MonteCarloMeasurements.StaticParticles} = Base.push!(v,s)
 
-# append! as needed in ModiaBase
-appendResidual!(v1::Vector{T}, s::T)          where {T} = push!(v1,s)
-appendResidual!(v1::Vector{T}, v2::Vector{T}) where {T} = append!(v1,v2)
-appendResidual!(v1::Vector{T}, v2::StaticArrays.SVector{N,T}) where {T,N} = append!(v1,v2)
+# append! as needed in EquationAndStateInfo.jl
+appendResidual!(v1::AbstractVector, s::Number)          = push!(v1,s)
+appendResidual!(v1::AbstractVector, v2::AbstractVector) = append!(v1,v2)
 
 include("LinearIntegerEquations.jl")
 
