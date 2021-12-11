@@ -57,19 +57,18 @@ Type of a residual (see also [`StateCategory`](@ref) for the type of a state).
 const niter_max = 20  # Maximum number of fixed-point iterations to solve A*x = b
 
 """
-    leq = LinearEquations{FloatType}(x_names::Vector{String},  x_lengths::Vector{Int},
-                                     nResiduals::Int, A_is_constant::Bool;
+    leq = LinearEquations{FloatType}(x_names::Vector{String}, x_vec_julia_names::AbstractVector,
+                                     x_lengths::Vector{Int}, nx_scalars::Int, A_is_constant::Bool;
                                      useRecursiveFactorizationUptoSize = 0)
 
 Define linear equation system "A*x=b" with `x::Vector{FloatType}`.
 
 - `x` is constructed from a set of scalar or vector variables i with names `x_names[i]`
    and length `x_length[i]` (that is `length(x) = sum(x_lengths)`).
+  x_names[1:nx_scalars] are scalar-valued elements.
+  x_names[nx_scalars+1:end] are vector-valued elements.
 
-- The residuals are constructed from a set of `nResidual` scalar or vector variables.
-  During code generation, it is not possible to determine the overall size of the residual vector.
-  This information is only available at runtime (when function LinearEquationsIteration(..)
-  is called with isInitial = true).
+- `x_vec_julia_names` are the Julia names of the vector-valued elements.
 
 - If `A_is_constant = true` then `A` is a matrix that is constant after initialization.
 
@@ -79,25 +78,34 @@ Define linear equation system "A*x=b" with `x::Vector{FloatType}`.
 For details how to use this constructor, see [`LinearEquationsIteration`](@ref).
 """
 mutable struct LinearEquations{FloatType <: Real}
-    odeMode::Bool                   # Set from the calling function after LinearEquations was instantiated (default: true)
-                                    # = true (standard mode): Compute "x" from equation "residuals = A*x - b"
-                                    # = false (DAE solver): During events (including initialization)
-                                    #   compute "x" as for odeMode=true. Outside of events:
-                                    #   (1) "x" is set from the outside (= der(x_dae) provided by DAE solver)
-                                    #   (2) Compute "residuals" from "residuals := A*x - b"
-                                    #   (3) From the outside copy "residuals" into "residuals_dae" of the DAE solver.
+    odeMode::Bool                     # Set from the calling function after LinearEquations was instantiated (default: true)
+                                      # = true (standard mode): Compute "x" from equation "residuals = A*x - b"
+                                      # = false (DAE solver): During events (including initialization)
+                                      #   compute "x" as for odeMode=true. Outside of events:
+                                      #   (1) "x" is set from the outside (= der(x_dae) provided by DAE solver)
+                                      #   (2) Compute "residuals" from "residuals := A*x - b"
+                                      #   (3) From the outside copy "residuals" into "residuals_dae" of the DAE solver.
 
-    A_is_constant::Bool             # = true, if A-matrix is constant
-    x_names::Vector{String}         # Names of the x-variables
-    x_lengths::Vector{Int}          # Lengths of the x-variables (sum(x_lengths) = length(x))
-    x::Vector{FloatType}            # Values of iteration variables
-    nResiduals::Int                 # Number of residual variables
+    A_is_constant::Bool               # = true, if A-matrix is constant
+    x_names::Vector{String}           # Names of the x-variables
+    x_vec_julia_names::AbstractVector # Julia names of the vector-valued x-variables
+                                      # (needed to generate code for
+                                      #     if _m.storeResult
+                                      #        x_vec_julia_names[1] = deepcopy(x_vec_julia_names[1])
+                                      #        ...)
+    x_lengths::Vector{Int}            # Lengths of the x-variables (sum(x_lengths) = length(x))
+    nx_scalars::Int                   # x_names[1:nx_scalars] are scalar-valued elements.
+                                      # x_names[nx_scalars+1:end] are vector-valued elements.
+    x_vec::Vector{Vector{FloatType}}  # x_vec[1] is the value vector of x_names[nx_scalars+1]
+                                      # x_vec[2] is the value vector of x_names[nx_scalars+2]
+                                      # <..>
+
 
     A::Matrix{FloatType}
     b::Vector{FloatType}
-    pivots::Vector{Int}             # Pivot vector if recursiveFactorization = true
-    residuals::Vector{FloatType}    # Values of the residuals FloatType vector; length(residuals) = sum(residuals_length) = sum(x_lengths)
-    residual_value::AbstractVector  # Values of the residual variables ::Vector{Any}, length(residual_values) = nResiduals
+    x::Vector{FloatType}              # Values of iteration variables
+    pivots::Vector{Int}               # Pivot vector if recursiveFactorization = true
+    residuals::Vector{FloatType}      # Values of the residuals FloatType vector; length(residuals) = length(x)
 
     # Iteration status of for-loop
     mode::Int       # Operational mode (see function LinearEquationsIteration)
@@ -111,30 +119,62 @@ mutable struct LinearEquations{FloatType <: Real}
     inconsistentNegative::Vector{String}
 
     # Constructed during initialization
+    useRecursiveFactorizationUptoSize::Int
     useRecursiveFactorization::Bool             # = true, if RecursiveFactorization.jl shall be used to solve the linear equation system
 
     luA::LU{FloatType,Array{FloatType,2}}       # lu-Decomposition of A
 
-    function LinearEquations{FloatType}(x_names::Vector{String}, x_lengths::Vector{Int},
-                                        nResiduals::Int, A_is_constant::Bool;
+    function LinearEquations{FloatType}(x_names::Vector{String}, x_vec_julia_names::AbstractVector,
+                                        x_lengths::Vector{Int}, nx_scalars::Int, A_is_constant::Bool;
                                         useRecursiveFactorizationUptoSize::Int = 0) where {FloatType <: Real}
         @assert(length(x_names) > 0)
         @assert(length(x_names) == length(x_lengths))
         nx = sum(x_lengths)
         @assert(nx > 0)
-        useRecursiveFactorization = nx <= useRecursiveFactorizationUptoSize        
+        useRecursiveFactorization = nx <= useRecursiveFactorizationUptoSize
 
-        new(true, A_is_constant, x_names, x_lengths, zeros(FloatType,nx), nResiduals,
-            zeros(FloatType,nx,nx), zeros(FloatType,nx), fill(0,nx), zeros(FloatType,nx),
-            Vector{Any}(undef,nResiduals), -2, 0, niter_max, false, String[], String[],
-            useRecursiveFactorization)
+        # Allocate value storage for vector elements
+        nx_vec = length(x_names) - nx_scalars
+        x_vec  = fill(FloatType[], nx_vec)
+        j      = nx_scalars
+        for i = 1:nx_vec
+            j += 1
+            x_vec[i] = zeros(FloatType, x_lengths[j])
+        end
+
+        new(true, A_is_constant, x_names, Any[], x_lengths, nx_scalars, x_vec,
+            zeros(FloatType,nx,nx), zeros(FloatType,nx), zeros(FloatType,nx), fill(0,nx), zeros(FloatType,nx),
+            -2, 0, niter_max, false, String[], String[],
+            useRecursiveFactorizationUptoSize, useRecursiveFactorization)
     end
 end
 LinearEquations(args...) = LinearEquations{Float64}(args...)
 
 
 """
-     iterating = LinearEquationsIteration(leq, isInitial, [solve, isStoreResult,] time, timer)
+    b = copy_x_into_x_vec!(leq)
+
+If vector valued elements of x-vector, copy vector valued elements of leq.x
+into vector leq.x_vec. The function returns true
+"""
+function copy_x_into_x_vec!(leq::LinearEquations{FloatType})::Bool where {FloatType}
+    i_vec = 0
+    i_x   = leq.nx_scalars
+    for i = leq.nx_scalars+1:length(leq.x_names)
+        i_vec += 1
+        x_vec = leq.x_vec[i_vec]
+        for j = 1:leq.x_lengths[i]
+            x_vec[j] = leq.x[i_x+j]
+        end
+        i_x += leq.x_lengths[i]
+    end
+    return true
+end
+
+
+
+"""
+     iterating = LinearEquationsIteration!(leq, isInitial, [solve, isStoreResult,] time, timer)
 
 This function solves a linear equation system in residual form "residual = A*x - b"
 by iterating with a while loop over this system (arguments `solve, isStoreResult` are optional
@@ -146,15 +186,16 @@ function getDerivatives!(_der_x, _x, _m, _time)::Nothing
     _leq::Union{Nothing,LinearEquations{FloatType}} = nothing
     ...
     _leq      = _m.linearEquations[<nr>]   # leq::LinearEquations{FloatType}
-    _leq.mode = -2  # initializes the iteration
+    _leq.mode = -3  # initializes the iteration
     while LinearEquationsIteration(_leq, _m.isInitial, _m.solve_leq, _m.storeResult, _m.time, _m.timer)
-        x1 = _leq.x[1:3]
-        x2 = _leq.x[4]
+        x1 = _leq.x[1]
+        x2 = _leq.x[2]
+        x3 = _leq.x_vec[1]
         ...
         v_solved1 = f(x1, x2, ..., positive(x1,.., _leq))
         v_solved2 = f(x1, x2, ..., v_solved1)
         ...
-        _leq.residual_value[..] = < residual equation(x1,x2,...) >
+        appendResidual!(_leq.residuals, < getResiduals(x1,x2,...) > )
     end
     ...
 end
@@ -181,7 +222,7 @@ and used in subsequent calls to solve the equation system.
 - `leq::LinearEquations{FloatType}`: Instance of `LinearEquations`.
 - `isInitial::Bool`: = true: Called during initialization.
 - `solve::Bool`: = true: leq.x is computed by LinearEquationsIteration.
-                 = false: leq.x has been set by calling environment 
+                 = false: leq.x has been set by calling environment
                           (typically when called from DAE integrator).
                           Note, at events and at terminate, solve must be true).
 - `isStoreResult::Bool`: = true: Called at a communication point (store results).
@@ -249,7 +290,7 @@ leq.mode = -2  # Terminate while-loop or initialize next event iteration
 leq.mode = -1: @assert(!leq.odeMode && !solve)
                # DAE mode, but not at an event
                return false      # Terminate while-loop
-               
+
 leq.mode =  0: @assert(leq.odeMode || solve)
                # ODE mode or DAE mode at an event (solve "x" from equation "residuals = A*x - b")
                leq.b    = -leq.residuals
@@ -276,12 +317,12 @@ leq.mode >  0: @assert(leq.odeMode || solve)
                end
 ```
 """
-LinearEquationsIteration(leq::LinearEquations, isInitial, time, timer) = LinearEquationsIteration(leq, isInitial, true, false, time, timer)
-function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bool, solve::Bool,
-                                  isStoreResult::Bool, time, timer)::Bool where {FloatType}
+LinearEquationsIteration!(leq::LinearEquations, isInitial, time, timer) = LinearEquationsIteration!(leq, isInitial, true, false, time, timer)
+function LinearEquationsIteration!(leq::LinearEquations{FloatType}, isInitial::Bool, solve::Bool,
+                                   isStoreResult::Bool, time, timer)::Bool where {FloatType}
     mode = leq.mode
     nx   = length(leq.x)
-    
+
     if mode == -3
         # LinearEquationsIteration is called the first time in the current model evaluation
         leq.niter = 0      # Number of event iterations
@@ -304,7 +345,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
            end
         end
         empty!(leq.residuals)
-        return true  # Continue while-loop
+        return copy_x_into_x_vec!(leq)  # Continue while-loop
 
     elseif mode == -2
         # Terminate while-loop or initialize next event iteration
@@ -328,7 +369,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
         leq.x        .= 0
         leq.mode      = 0      # Compute "residuals .= A*0 - b"
         empty!(leq.residuals)
-        return true            # Continue while-loop
+        return copy_x_into_x_vec!(leq) # Continue while-loop
 
     elseif mode < -3 || mode > nx
         @goto ERROR
@@ -337,19 +378,17 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
     x = leq.x
     A = leq.A
     b = leq.b
-    nResiduals          = leq.nResiduals
-    residuals           = leq.residuals
-    residual_value      = leq.residual_value
+    residuals = leq.residuals
 
     if length(residuals) != length(x)
         error("Function LinearEquationsIteration wrongly used:\n",
               "length(leq.residuals) = ", length(leq.residuals), ", length(leq.x) = ", length(leq.x))
-    end 
- 
+    end
+
     if mode == -1
         @assert(!leq.odeMode && !solve)
         return false   # Terminate while-loop (leq.residuals must be copied into DAE residuals)
-        
+
     elseif !leq.A_is_constant || isInitial  # A is not constant or A is constant and isInitial = true
         if mode == 0
             # residuals = A*x - b -> b = -residuals)
@@ -359,7 +398,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
             leq.mode = 1
             x[1] = convert(FloatType, 1)
             empty!(leq.residuals)
-            return true
+            return copy_x_into_x_vec!(leq)
         end
 
         # residuals = A*x - b -> A[:,j] = residuals + b)
@@ -372,8 +411,8 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
         if j < nx
             leq.mode += 1
             x[leq.mode] = convert(FloatType, 1)
-            empty!(leq.residuals)            
-            return true
+            empty!(leq.residuals)
+            return copy_x_into_x_vec!(leq)
         end
 
         # Solve linear equation system
@@ -424,7 +463,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
                        # (leq.success is set to false in positive(..), if the return value changes).
 
     empty!(leq.residuals)
-    return true
+    return copy_x_into_x_vec!(leq)
 
     @label ERROR
     error("Should not occur (Bug in file ModiaBase/src/EquationAndStateInfo.jl):\n",
@@ -435,8 +474,7 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
           "   leq.odeMode    = $(leq.odeMode),\n",
           "   leq.mode       = $(leq.mode),\n",
           "   leq.x_names    = $(leq.x_names),\n",
-          "   leq.x_lengths  = $(leq.x_lengths),\n",
-          "   leq.nResiduals = $(leq.nResiduals).\n")
+          "   leq.x_lengths  = $(leq.x_lengths),\n")
 end
 
 
@@ -588,7 +626,7 @@ end
                 nz                   = 0,
                 x_info               = StateElementInfo[],
                 residualCategories   = ResidualCategory[],
-                linearEquations      = Tuple{Vector{String},Bool}[],
+                linearEquations      = Tuple{Vector{String},AbstractVector,Vector{Int},Int,Bool}[],
                 vSolvedWithFixedTrue = String[],
                 defaultParameterAndStartValues = nothing,
                 ResultType = nothing,
@@ -604,12 +642,13 @@ Return instance `eqInfo` that defines the information for the equation system.
 - x_info: Vector of StateElementInfo elements provding info for every x-element
 - residualCategories: If ode=true, length(residualCategories) = 0.
              If ode=false: residualCategories[i] is the `ResidualCategory`](@ref) of x-element "i".
-- `linearEquations::Vector{Tuple{Vector{String},Vector{Int},Int,Bool}}`:
+- `linearEquations::Vector{Tuple{Vector{String},AbstractVector,Vector{Int},Int,Bool}}`:
                linearEquations[i] defines a
                ModiaBase.LinearEquations system, where the first tuple value
-               is a vector of the names of the unknowns, the second tuple value
-               is a vector with the lengths of the unknowns, the third tuple value is the number
-               of residuals and the fourth tuple value
+               is a vector of the names of the unknowns,
+               the second tuple value is a vector of the Julia names of the vector-valued elements,
+               the third tuple value is a vector with the lengths of the unknowns,
+               the fourth tuple value is the number of residuals and the fifth tuple value
                defines whether the coefficient matrix A
                has only constant entries (=true) or not (=false).
 - `vSolvedWithFixedTrue::Vector{String}`: Vector of variables that are computed
@@ -629,7 +668,7 @@ mutable struct EquationInfo
     x_info::Vector{StateElementInfo}
     residualCategories::Vector{ResidualCategory}   # If ode=true, length(residualCategories) = 0
                                                    # If ode=false, residualCategories[j] is the ResidualCategory of residual[j]
-    linearEquations::Vector{Tuple{Vector{String},Vector{Int},Int,Bool}}
+    linearEquations::Vector{Tuple{Vector{String},AbstractVector,Vector{Int},Int,Bool}}
     vSolvedWithFixedTrue::Vector{String}
     nx::Int                                        # = length(x) or -1 if not yet known
     x_infoByIndex::Vector{Int}                     # i = x_infoByIndex[j] -> x_info[i]
@@ -647,7 +686,7 @@ EquationInfo(; status                = MANUAL,
                nz                    = 0,
                x_info                = StateElementInfo[],
                residualCategories    = ResidualCategory[],
-               linearEquations       = Tuple{Vector{String},Vector{Int},Int,Bool}[],
+               linearEquations       = Tuple{Vector{String},AbstractVector,Vector{Int},Int,Bool}[],
                vSolvedWithFixedTrue  = String[],
                nx                    = -1,
                x_infoByIndex         = Int[],
