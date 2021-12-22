@@ -18,9 +18,10 @@ using Unitful
 import StaticArrays
 
 
-# append! as needed in EquationAndStateInfo.jl
-appendResidual!(v1::AbstractVector, s::Number)          = push!(v1,s)
-appendResidual!(v1::AbstractVector, v2::AbstractVector) = append!(v1,v2)
+# append! as needed in EquationAndStateInfo.jl and in ModiaLang/src/CodeGeneration.jl
+appendVariable!(v1::AbstractVector, s::Number)          = push!(v1,s)
+appendVariable!(v1::AbstractVector, v2::AbstractVector) = append!(v1,v2)
+
 
 include("LinearIntegerEquations.jl")
 

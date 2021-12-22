@@ -7,6 +7,7 @@
 import DataFrames
 import OrderedCollections
 using  LinearAlgebra
+using  StaticArrays
 import TimerOutputs
 import RecursiveFactorization
 
@@ -17,10 +18,38 @@ export ResidualCategory, FD, FC_ALG, FC_LOW_HIGH, FC_MUE
 export LinearEquations
 
 export EquationInfo, StateElementInfo, update_equationInfo!, get_stateNames, get_x_table
+export initialStateVector, updateEquationInfo!
 
 export EquationInfoStatus, MANUAL, CODE_GENERATION, SOLVER_MODEL
 
 
+
+"""
+    isFixedLengthStartOrInit(startOrInit::Any, name::AbstractString)
+    
+Returns true, if `startOrInit` (so start value, init value, `nothing`) characterizes a value
+with fixed length, so `length(v_startOrInit)` is fixed after compilation (= either a number or a StaticArray).
+Note, if a start-value is not defined (`startOrInit = nothing`) a scalar default is used.
+
+An error is triggered, if `startOrInit` is neither a `Number` nor an `AbstractVector` nor `nothing`.
+In this case argument `name` is used in the error message (currently, EquationAndStateInfo is restricted
+to numbers and vectors. In a subsequent version, two and more-dimensional arrays might be supported).
+
+# Examples
+```
+isFixedLengthStartOrInit(1.0)                 # = true
+isFixedLengthStartOrInit(SVector{3}(1,2,3))   # = true
+isFixedLengthStartOrInit([1,2,3])             # = false (size can be changed after compilation)
+isFixedLengthStartOrInit(nothing)             # = true (is assumed to be a scalar with value zero)
+isFixedLengthStartOrInit(missing)             # error
+```
+"""
+isFixedLengthStartOrInit(startOrInit, name::AbstractString) = begin
+    if !(startOrInit isa Nothing || startOrInit isa Number || startOrInit isa AbstractVector)
+        error("Start or init value $startOrInit of variable $name\nis neither a subtype of Number, subtype of AbstractVector, nor is nothing")
+    end
+    !(startOrInit isa AbstractVector && !(startOrInit isa StaticArray))
+end
 
 
 """
@@ -58,15 +87,15 @@ const niter_max = 20  # Maximum number of fixed-point iterations to solve A*x = 
 
 """
     leq = LinearEquations{FloatType}(x_names::Vector{String}, x_vec_julia_names::AbstractVector,
-                                     x_lengths::Vector{Int}, nx_scalars::Int, A_is_constant::Bool;
+                                     x_lengths::Vector{Int}, nx_fixedLength::Int, A_is_constant::Bool;
                                      useRecursiveFactorizationUptoSize = 0)
 
 Define linear equation system "A*x=b" with `x::Vector{FloatType}`.
 
 - `x` is constructed from a set of scalar or vector variables i with names `x_names[i]`
    and length `x_length[i]` (that is `length(x) = sum(x_lengths)`).
-  x_names[1:nx_scalars] are scalar-valued elements.
-  x_names[nx_scalars+1:end] are vector-valued elements.
+  x_names[1:nx_fixedLength] are elements with fixed lengths (dimensions do not change after compilation).
+  x_names[nx_fixedLength+1:end] are vector-valued elements where the dimensions may changer after compilation.
 
 - `x_vec_julia_names` are the Julia names of the vector-valued elements.
 
@@ -94,10 +123,10 @@ mutable struct LinearEquations{FloatType <: Real}
                                       #        x_vec_julia_names[1] = deepcopy(x_vec_julia_names[1])
                                       #        ...)
     x_lengths::Vector{Int}            # Lengths of the x-variables (sum(x_lengths) = length(x))
-    nx_scalars::Int                   # x_names[1:nx_scalars] are scalar-valued elements.
-                                      # x_names[nx_scalars+1:end] are vector-valued elements.
-    x_vec::Vector{Vector{FloatType}}  # x_vec[1] is the value vector of x_names[nx_scalars+1]
-                                      # x_vec[2] is the value vector of x_names[nx_scalars+2]
+    nx_fixedLength::Int               # x_names[1:nx_fixedLength] are elements with fixed lengths (after compilation)
+                                      # x_names[nx_fixedLength+1:end] are vector elements where the size may change after compilation
+    x_vec::Vector{Vector{FloatType}}  # x_vec[1] is the value vector of x_names[nx_fixedLength+1]
+                                      # x_vec[2] is the value vector of x_names[nx_fixedLength+2]
                                       # <..>
 
 
@@ -125,7 +154,7 @@ mutable struct LinearEquations{FloatType <: Real}
     luA::LU{FloatType,Array{FloatType,2}}       # lu-Decomposition of A
 
     function LinearEquations{FloatType}(x_names::Vector{String}, x_vec_julia_names::AbstractVector,
-                                        x_lengths::Vector{Int}, nx_scalars::Int, A_is_constant::Bool;
+                                        x_lengths::Vector{Int}, nx_fixedLength::Int, A_is_constant::Bool;
                                         useRecursiveFactorizationUptoSize::Int = 0) where {FloatType <: Real}
         @assert(length(x_names) > 0)
         @assert(length(x_names) == length(x_lengths))
@@ -134,15 +163,15 @@ mutable struct LinearEquations{FloatType <: Real}
         useRecursiveFactorization = nx <= useRecursiveFactorizationUptoSize
 
         # Allocate value storage for vector elements
-        nx_vec = length(x_names) - nx_scalars
+        nx_vec = length(x_names) - nx_fixedLength
         x_vec  = fill(FloatType[], nx_vec)
-        j      = nx_scalars
+        j      = nx_fixedLength
         for i = 1:nx_vec
             j += 1
             x_vec[i] = zeros(FloatType, x_lengths[j])
         end
 
-        new(true, A_is_constant, x_names, Any[], x_lengths, nx_scalars, x_vec,
+        new(true, A_is_constant, x_names, Any[], x_lengths, nx_fixedLength, x_vec,
             zeros(FloatType,nx,nx), zeros(FloatType,nx), zeros(FloatType,nx), fill(0,nx), zeros(FloatType,nx),
             -2, 0, niter_max, false, String[], String[],
             useRecursiveFactorizationUptoSize, useRecursiveFactorization)
@@ -159,8 +188,8 @@ into vector leq.x_vec. The function returns true
 """
 function copy_x_into_x_vec!(leq::LinearEquations{FloatType})::Bool where {FloatType}
     i_vec = 0
-    i_x   = leq.nx_scalars
-    for i = leq.nx_scalars+1:length(leq.x_names)
+    i_x   = leq.nx_fixedLength
+    for i = leq.nx_fixedLength+1:length(leq.x_names)
         i_vec += 1
         x_vec = leq.x_vec[i_vec]
         for j = 1:leq.x_lengths[i]
@@ -547,31 +576,44 @@ mutable struct StateElementInfo
     der_x_name::String            # Modia name of der_x-element or "" if either "der(x_name)" or if no name,
     der_x_name_julia              # Julia name of der_x-element in getDerivatives! function
                                   # or not needed (since no code generation)
-    stateCategory::StateCategory  # category of the state
-    length::Int                   # length of x-element (or -1 if not yet known)
+    stateCategory::StateCategory  # category of the state   
     unit::String                  # unit of x-element as string (or "" if not yet known)
-    fixed::Bool                   # false or true
+    startOrInit::Any              # start or init value or nothing depending on fixed
+                                  # (init   : if value and fixed=true
+                                  #  start  : if value and fixed=false
+                                  #  nothing: neither start nor init value; fixed=false)
+    fixed::Bool                   #
     nominal::Float64              # nominal value (NaN if determined via start value)
     unbounded::Bool               # false or true
-    startIndex::Int               # start index of x-element with respect to x-vector
-                                  # or -1 if not yet known.
+    fixedLength::Bool             # = true, if length of value is fixed at compile time (= scalar or StaticArray)
+                                  # = false, if length of value is determined before initialization
+    scalar::Bool                  # = true, if scalar
+                                  # = false, if vector
+    length::Int                   # length of x-element                                   
+    startIndex::Int               # start index of element with respect to x-vector (if fixedLength=true)  
+                                  # or with respect to x_vec-vector (if fixedLength=false)
 end
+
+
 
 # Constructor for code-generation
 StateElementInfo(x_name, x_name_julia, der_x_name, der_x_name_julia,
-                 stateCategory, length, unit, fixed, nominal, unbounded) = StateElementInfo(
+                 stateCategory, unit, startOrInit, fixed, nominal, unbounded) = StateElementInfo(
                  x_name, x_name_julia, der_x_name, der_x_name_julia,
-                 stateCategory, length, unit, fixed, nominal, unbounded, -1)
+                 stateCategory, unit, startOrInit, fixed, nominal, unbounded,
+                 isFixedLengthStartOrInit(startOrInit, x_name), !(startOrInit isa AbstractArray), 
+                 startOrInit isa Nothing ? 1 : length(startOrInit), -1)
+
 
 # Constructor for reading StateElementInfo after code-generation (x_name_julia and der_x_name_julia are not included
-StateElementInfo(x_name, der_x_name,
-                 stateCategory, length, unit, fixed, nominal, unbounded) = StateElementInfo(
-                 x_name, :(), der_x_name, :(),
-                 stateCategory, length, unit, fixed, nominal, unbounded, -1)
+#StateElementInfo(x_name, der_x_name,
+#                 stateCategory, unit, startOrInit, fixed, nominal, unbounded) = StateElementInfo(
+#                 x_name, :(), der_x_name, :(),
+#                 stateCategory, unit, startOrInit, fixed, nominal, unbounded, -1)
 
 # Constructor for manually generated equation info.
-StateElementInfo(x_name, der_x_name, stateCategory=XD; fixed=false, nominal=NaN, unbounded=false) =
-    StateElementInfo(x_name, :(), der_x_name, :(), stateCategory, -1, "", fixed, nominal, unbounded, -1)
+#StateElementInfo(x_name, der_x_name, stateCategory=XD; fixed=false, nominal=NaN, unbounded=false) =
+#    StateElementInfo(x_name, :(), der_x_name, :(), stateCategory, "", nothing, fixed, nominal, unbounded, -1)
 
 
 function Base.show(io::IO, xe_info::StateElementInfo)
@@ -584,22 +626,23 @@ function Base.show(io::IO, xe_info::StateElementInfo)
 	#print(io, ",")
     #show( io, xe_info.der_x_name_julia)
     print(io, ",ModiaBase.", xe_info.stateCategory)
-    print(io, ",", xe_info.length)
 	print(io, ",")
     show( io, xe_info.unit)
+    print(io, ",", xe_info.startOrInit)
     print(io, ",", xe_info.fixed)
     print(io, ",", xe_info.nominal)
     print(io, ",", xe_info.unbounded)
-    #if xe_info.startIndex > 0
-    #    print(io, ",", xe_info.startIndex)
-    #end
+    print(io, ",", xe_info.fixedLength)
+    print(io, ",", xe_info.scalar)      
+    print(io, ",", xe_info.length)    
+    print(io, ",", xe_info.startIndex)
     print(io, ")")
     return nothing
 end
 
 
 """
-    x_table = get_x_table(x_info::Vector{StateElementInfo}
+    x_table = get_x_table(x_info::Vector{StateElementInfo})
 
 Return the state element info as DataFrames.DataFrame table, for example
 to print it as:
@@ -609,10 +652,10 @@ show(x_table, allrows=true, allcols=true, summary=false, eltypes=false)
 ```
 """
 function get_x_table(x_info::Vector{StateElementInfo})
-    x_table = DataFrames.DataFrame(name=String[], length=Int[], unit=String[], fixed=Bool[], nominal=Float64[], unbounded=Bool[])
+    x_table = DataFrames.DataFrame(name=String[], unit=String[], startOrInit=[], fixed=Bool[], nominal=Float64[], unbounded=Bool[])
 
     for xe_info in x_info
-        push!(x_table, (xe_info.x_name, xe_info.length, xe_info.unit, xe_info.fixed, xe_info.nominal, xe_info.unbounded))
+        push!(x_table, (xe_info.x_name, xe_info.unit, xe_info.startOrInit, xe_info.fixed, xe_info.nominal, xe_info.unbounded))
     end
 
     return x_table
@@ -620,11 +663,28 @@ end
 
 
 """
+    nx = stateVectorLength(x_info::Vector{StateElementInfo})
+    
+Return the length of the state vector
+"""
+function stateVectorLength(x_info::Vector{StateElementInfo})::Int
+    nx = 0
+    for xe_info in x_info
+        nx += xe_info.length
+    end
+    return nx
+end
+   
+
+    
+"""
     eqInfo = EquationInfo(;
                 status               = MANUAL,
                 ode                  = true,
                 nz                   = 0,
                 x_info               = StateElementInfo[],
+                nx                   = -1,
+                nxFixedLength        = nx,
                 residualCategories   = ResidualCategory[],
                 linearEquations      = Tuple{Vector{String},AbstractVector,Vector{Int},Int,Bool}[],
                 vSolvedWithFixedTrue = String[],
@@ -671,6 +731,7 @@ mutable struct EquationInfo
     linearEquations::Vector{Tuple{Vector{String},AbstractVector,Vector{Int},Int,Bool}}
     vSolvedWithFixedTrue::Vector{String}
     nx::Int                                        # = length(x) or -1 if not yet known
+    nxFixedLength::Int                             # x_info[1:nxFixedLengt] are states with fixed length (does not change after compilation)
     x_infoByIndex::Vector{Int}                     # i = x_infoByIndex[j] -> x_info[i]
                                                    # or empty vector, if not yet known.
     x_dict::OrderedCollections.OrderedDict{String,Int}      # x_dict[x_name] returns the index of x_name with respect to x_info
@@ -688,26 +749,25 @@ EquationInfo(; status                = MANUAL,
                residualCategories    = ResidualCategory[],
                linearEquations       = Tuple{Vector{String},AbstractVector,Vector{Int},Int,Bool}[],
                vSolvedWithFixedTrue  = String[],
-               nx                    = -1,
+               nxFixedLength         = -1,
                x_infoByIndex         = Int[],
                defaultParameterAndStartValues::Union{AbstractDict,Nothing} = nothing,
                ResultType = nothing,
-               ResultTypeHasFloatType = false) =
-               EquationInfo(status, ode, nz, x_info,
-                            residualCategories, linearEquations,
-                            vSolvedWithFixedTrue, nx, x_infoByIndex,
-                            OrderedCollections.OrderedDict{String,Int}(),
-                            OrderedCollections.OrderedDict{String,Int}(),
-                            defaultParameterAndStartValues,
-                            ResultType, ResultTypeHasFloatType)
+               ResultTypeHasFloatType = false) = EquationInfo(status, ode, nz, x_info,
+                                                    residualCategories, linearEquations,
+                                                    vSolvedWithFixedTrue, stateVectorLength(x_info), -1, x_infoByIndex,
+                                                    OrderedCollections.OrderedDict{String,Int}(),
+                                                    OrderedCollections.OrderedDict{String,Int}(),
+                                                    defaultParameterAndStartValues,
+                                                    ResultType, ResultTypeHasFloatType)
 
 
 """
-    updateEquationInfo!(eqInfo::EquationInfo)
+    initEquationInfo!(eqInfo::EquationInfo)
 
 Set eqInfo.x_dict, eqInfo.der_x_dict, eqInfo.nx and eqInfo.x_info[:].startIndex
 """
-function updateEquationInfo!(eqInfo::EquationInfo)::Nothing
+function initEquationInfo!(eqInfo::EquationInfo)::Nothing
     x_dict     = eqInfo.x_dict
     der_x_dict = eqInfo.der_x_dict
     startIndex = 1
@@ -716,10 +776,63 @@ function updateEquationInfo!(eqInfo::EquationInfo)::Nothing
         der_x_dict[xi_info.der_x_name] = i
         xi_info.startIndex = startIndex
         startIndex += xi_info.length
-    end
+    end    
     eqInfo.nx = startIndex - 1
     return nothing
 end
+
+
+"""
+    x_init = initialStateVector(eqInfo::EquationInfo, FloatType)
+    
+Return initial state vector `Vector{FloatType}` with stripped units.
+"""
+function initialStateVector(eqInfo::EquationInfo, FloatType::Type)::Vector{FloatType}
+    x_start = fill(FloatType(0), eqInfo.nx)
+    startIndex = 1
+    for xe_info in eqInfo.x_info
+        if xe_info.scalar
+            if !(xe_info.startOrInit isa Nothing)
+                x_start[startIndex] = FloatType(ustrip(xe_info.startOrInit))
+                startIndex += 1
+            end
+        else
+            for i = 1:xe_info.length
+                x_start[startIndex] = FloatType(ustrip(xe_info.startOrInit[i]))
+                startIndex += 1
+            end
+        end
+    end
+    return x_start
+end
+
+
+"""
+    x_start = updateEquationInfo!(eqInfo::EquationInfo, FloatType)
+
+Set eqInfo.x_dict, eqInfo.der_x_dict, eqInfo.nx and eqInfo.x_info[:].startIndex
+"""
+function updateEquationInfo!(eqInfo::EquationInfo, FloatType::Type)::Vector{FloatType}
+    nxFixedLength = eqInfo.nxFixedLength
+    if nxFixedLength == 0
+        startIndex = 1
+    else
+        xi_info = eqInfo.x_info[nxFixedLength]
+        startIndex = xi_info.startIndex + xi_info.length
+    end
+    
+    x_info = eqInfo.x_info
+    for i = nxFixedLength+1:length(x_info)
+        xi_info = x_info[i]
+        xi_info.length     = length(xi_info.startOrInit)
+        xi_info.startIndex = startIndex
+        startIndex        += xi_info.length
+    end    
+    eqInfo.nx = startIndex - 1
+    
+    return initialStateVector(eqInfo, FloatType)
+end
+
 
 get_x_startIndexAndLength(eqInfo::EquationInfo, name::String) = begin
     xe_info = eqInfo.x_info[ eqInfo.x_dict[name] ]

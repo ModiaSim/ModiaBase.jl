@@ -29,6 +29,7 @@ export showCodeWithoutComments
 #using OrderedCollections
 using ModiaBase
 using ModiaBase.BLTandPantelides
+using StaticArrays
 
 
 
@@ -43,9 +44,7 @@ const ERROR       = 2
         var_name               = v          -> nothing,
         var_julia_name         = v          -> nothing,
         var_unit               = v          -> "",
-        var_has_start          = v_original -> false,
-        var_fixed              = v_original -> nothing,
-        var_length             = v_original -> 1,
+        var_startInitFixed     = v          -> (nothing,false),   # (startOrInit, fixed)
         var_is_state           = v_original -> false,
         equation               = e          -> ""
         isSolvableEquation     = (e_original,v_original) -> false,
@@ -70,15 +69,9 @@ The functions need to have the following arguments:
 - `var_unit(v::Int)::String`:\\
   Return unit of variable `v` as `String` (for example "N*m") or `""`, if no unit is defined.
 
-- `var_has_start(v_original::Int)::Bool`:\\
-   Return true, if variable `v_original` from the original, undifferentiated equations has a start value.
-
-- `var_fixed(v_original::Int)`:\\
-   Return `fixed` attribute of variable `v_original` from the original,
-   undifferentiated equations (= `nothing`, `false` or `true`).
-
-- `var_length(v_original::Int)::Int`:\\
-   Return length of variable `v_original` from the original, undifferentiated equations.
+- `var_startInitFixed(v::Int)::Tuple(Any,Bool)`:\\
+  Return `(startOrInit, fixed)`, where `startOrInit` is the `start` or `init` value or `nothing`
+  (if neither `start` nor `init` defined) and `fixed` is `true`, if an `init` value is defined.  
 
 -  `var_is_state(v_original::Int)::Bool`:\\
    Return true, if variable `v_original` is defined to be a state.
@@ -112,11 +105,9 @@ struct StateSelectionFunctions
     var_name::Function
     var_julia_name::Function
     var_unit::Function
-    var_has_start::Function
-    var_fixed::Function
+    var_startInitFixed::Function
     var_nominal::Function
     var_unbounded::Function
-    var_length::Function
     var_is_state::Function
     equation::Function
     isSolvableEquation::Function
@@ -129,11 +120,9 @@ struct StateSelectionFunctions
         var_name               = v          -> nothing,
         var_julia_name         = v          -> nothing,
         var_unit               = v          -> "",
-        var_has_start          = v_original -> false,
-        var_fixed              = v_original -> nothing,
+        var_startInitFixed     = v          -> (nothing,false),   # (startOrInit, fixed)
         var_nominal            = v_original -> NaN,
         var_unbounded          = v_original -> false,
-        var_length             = v_original -> 1,
         var_is_state           = v_original -> false,
         equation               = e          -> "",
         isSolvableEquation     = (e_original,v_original) -> false,
@@ -145,11 +134,9 @@ struct StateSelectionFunctions
     ) = new(var_name,
             var_julia_name,
             var_unit,
-            var_has_start,
-            var_fixed,
+            var_startInitFixed,
             var_nominal,
             var_unbounded,
-            var_length,
             var_is_state,
             equation,
             isSolvableEquation,
@@ -762,8 +749,9 @@ function tearEquationsWithCandidates!(eq::EquationGraph)::Nothing
         # Variable has no start value because:
         #   (a) is not from the original, non-differentiated equations
         #   (b) is a differentiated variable
-        #   (c) var_has_start(..) returns false
-        hasNoStart = !eq.vOriginal[v] || eq.Arev[v] > 0 || !eq.fc.var_has_start(v)
+        #   (c) no start or init value is defined
+        (startOrInit, fixed) = eq.fc.var_startInitFixed(v)
+        hasNoStart = !eq.vOriginal[v] || eq.Arev[v] > 0 || startOrInit isa Nothing
         if hasNoStart
             # Has no start value
             if eq.vOriginal[v] && (eq.A[v]>0 && eq.vOriginal[eq.A[v]])
@@ -776,10 +764,9 @@ function tearEquationsWithCandidates!(eq::EquationGraph)::Nothing
             end
 
         else
-            vfixed::Union{Bool,Nothing} = eq.fc.var_fixed(v)
-            if typeof(vfixed) == Nothing
+            if startOrInit isa Nothing
                 push!(eq.vcCandidates[5], v)
-            elseif vfixed
+            elseif fixed
                 push!(eq.vcCandidates[6], v)
             else
                 push!(eq.vcCandidates[4], v)
@@ -830,8 +817,7 @@ If variable v is not differentiated AND has fixed=true store it in eq.equationIn
 (this is used to check during initialization, that the start value is respected)
 """
 function addFixedVariable!(eq::EquationGraph, v::Int)::Nothing
-    v_fixed_aux = eq.fc.var_fixed(v)
-    v_fixed     = typeof(v_fixed_aux) == Nothing ? false : v_fixed_aux
+    (v_startOrInit,v_fixed) = eq.fc.var_startInitFixed(v)
     if eq.Arev[v] == 0 && v_fixed
         push!(eq.vSolvedWithFixedTrue, v)
         push!(eq.equationInfo.vSolvedWithFixedTrue, eq.fc.var_name(v))
@@ -897,47 +883,64 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool, u
     #
     vAssigned_names   = Any[]
     v_vec_julia_names = Any[]
-    v_vec         = Int[]
-    v_vec_lengths = Int[]
-
+    v_vec             = Int[]
+    v_vec_startOrInit = Any[]
+    i1 = 0
+    i2 = 0
     for (i,v) in enumerate(eq.vTear)
-        v_length = eq.fc.var_length(undifferentiated(eq,v))
-        if v_length == 1
-            # Scalar variable
-            v_name = eq.fc.var_julia_name(v)
-            v_unit = unitless ? "" : eq.fc.var_unit(v)
-            if v_unit == ""
-                push!(while_body, :( $v_name = _leq_mode.x[$i] ) )
+        (v_startOrInit, v_fixed) = eq.fc.var_startInitFixed(undifferentiated(eq,v))
+        v_name = eq.fc.var_name(v)
+
+        if isFixedLengthStartOrInit(v_startOrInit, v_name)
+            # length(v_startOrInit) is fixed after compilation
+            v_julia_name = eq.fc.var_julia_name(v)
+            v_unit       = unitless ? "" : eq.fc.var_unit(v)
+            v_length     = isnothing(v_startOrInit) ? 1 : length(v_startOrInit)
+            i1 = i2 + 1
+            i2 = i1 + v_length - 1
+            if v_startOrInit isa AbstractVector
+                # v is a vector
+                if v_unit == ""
+                    push!(while_body, :( $v_julia_name = SVector{$v_length}(_leq_mode.x[$i1:$i2])) )
+                else
+                    push!(while_body, :( $v_julia_name = SVector{$v_length}(_leq_mode.x[$i1:$i2])*@u_str($v_unit)) )
+                end
+            elseif v_startOrInit isa Number || v_startOrInit isa Nothing
+                # v is a scalar or nothing (= assumed to be a scalar)
+                if v_unit == ""
+                    push!(while_body, :( $v_julia_name = _leq_mode.x[$i1] ) )
+                else
+                    push!(while_body, :( $v_julia_name = _leq_mode.x[$i1]*@u_str($v_unit) ) )
+                end
             else
-                expr = :( $v_name = _leq_mode.x[$i]*@u_str($v_unit) )
-                push!(while_body, expr)
+                error("Should not occur: v_name = $v_name, v_startOrInit = $v_startOrInit")
             end
-            push!(vAssigned_names, v_name)
+            push!(vAssigned_names, v_julia_name)
             push!(vTear_lengths  , v_length)
 
             # Store iteration variables in linearEquations to be used in error messages
-            push!(vTear_names, eq.fc.var_name(v))
+            push!(vTear_names, v_name)
         else
-            # Vector valued variable
-            push!(v_vec        , v)
-            push!(v_vec_lengths, v_length)
+            # length(v_startOrInit) may change after compilation
+            push!(v_vec, v)
+            push!(v_vec_startOrInit, v_startOrInit)
         end
     end
 
     # Assignment code for vector-valued variables
-    nx_scalars = length(vAssigned_names)
+    nx_fixedLength = length(vAssigned_names)
     for (i,v) in enumerate(v_vec)
-        v_name = eq.fc.var_julia_name(v)
-        v_unit = unitless ? "" : eq.fc.var_unit(v)
+        v_startOrInit = v_vec_startOrInit[i]
+        v_julia_name  = eq.fc.var_julia_name(v)
+        v_unit        = unitless ? "" : eq.fc.var_unit(v)
         if v_unit == ""
-            push!(while_body, :( $v_name = _leq_mode.x_vec[$i] ) )
+            push!(while_body, :( $v_julia_name = _leq_mode.x_vec[$i] ) )
         else
-            expr = :( $v_name = _leq_mode.x_vec[$i]*@u_str($v_unit) )
-            push!(while_body, expr)
+            push!(while_body, :( $v_julia_name = _leq_mode.x_vec[$i]*@u_str($v_unit) ))
         end
-        push!(vAssigned_names, v_name)
-        push!(vTear_lengths  , v_vec_lengths[i])
-        push!(v_vec_julia_names, v_name)
+        push!(vAssigned_names  , v_julia_name)
+        push!(vTear_lengths    , length(v_startOrInit))
+        push!(v_vec_julia_names, v_julia_name)
 
         # Store iteration variables in linearEquations to be used in error messages
         push!(vTear_names, eq.fc.var_name(v))
@@ -959,7 +962,7 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool, u
     end
 
     # Generate LinearEquations data structure
-    push!(eq.equationInfo.linearEquations, (vTear_names, v_vec_julia_names, vTear_lengths, nx_scalars, hasConstantCoefficients))
+    push!(eq.equationInfo.linearEquations, (vTear_names, v_vec_julia_names, vTear_lengths, nx_fixedLength, hasConstantCoefficients))
 
     # Construct for-loop
     leq_index = length(eq.equationInfo.linearEquations)
@@ -1002,7 +1005,8 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool, u
 
     # Store vTear without a start value
     for vTear in eq.vTear
-        if !eq.fc.var_has_start(vTear)
+        (vTear_startOrInit, vTear_fixed) = eq.fc.var_startInitFixed(vTear)
+        if vTear_startOrInit isa Nothing
             push!(eq.vTearWithoutStart, vTear)
         end
     end
@@ -1149,25 +1153,22 @@ A tuple with the following values:
 - `equationInfo::`[`ModiaBase.EquationInfo`](@ref): Object that defines
   the states of the ODE.
 
-When variable `v` has a `start` attribute defined
-(`stateSelectionFunctions.var_has_start(v)` returns `true`), then
-the value of attribute `fixed` returned by
-`stateSelectionFunctions.var_fixed(v)` has the following meaning:
+When variable `v` has neither a `start` nor `init` attribute defined,
+it is assumed to have `start=0.0`.
 
-| `fixed =`    | Description                                                |
-|:-------------|:-----------------------------------------------------------|
-| `nothing`    | `start` should be respected, if possible                   |
-| `false`      | `start` is allowed to be changed during initialization     |
-| `true`       | `start` is not allowed to be changed during initialization |
 
-Note, `start, fixed` influence the state selection.
+| defined   | Description                                                |
+|:----------|:-----------------------------------------------------------|
+| `start`   | `start` is allowed to be changed during initialization     |
+| `init`    | `init` is not allowed to be changed during initialization  |
 
-If an ODE state has no `start` value defined, a warning message is printed
-(start value missing).
+Note, `start, init` influence the state selection.
 
-If a solved variable has a `start` value with `fixed=nothing` or
-`fixed=true`, an information message is printed in case `log=true`
-(start value has no effect).
+If an ODE state has neither a `start` nor an `init` value defined, a warning message is printed
+(start/init value missing).
+
+If a solved variable has an `init` value, an information message is printed in case `log=true`
+(init value has no effect).
 
 
 # Sketch of the Algorithm
@@ -1213,8 +1214,8 @@ For every equation set on every differentiation level perform the following acti
   M < N is not possible).
 
   1. Solve the equation system explicitly via tearing for N unknowns
-     (*error, if this is not possible*). Use start/fixed attributes of the M unknowns
-     to influence tearing (e.g. it is tried to eliminate variables that have no start values).
+     (*error, if this is not possible*). Use start/init attributes of the M unknowns
+     to influence tearing (e.g. it is tried to eliminate first variables that have neither start not init values).
 
   2. The N solved variables have been initially ODE states and are now defined to be
      no ODE states (so called dummy states, that is algebraic variables).
@@ -1338,11 +1339,12 @@ function getSortedAndSolvedAST(Goriginal,     # Typically ::Vector{Vector{Int}}
                 if log && i < length(eConstraints)
                     vWithStart = Int[]
                     for v in vConstraints[i]
-                        if eq.fc.var_has_start(v)
+                        (v_startOrInit,v_fixed) = eq.fc.var_startInitFixed(v)
+                        if !(v_startOrInit isa Nothing)
                             push!(vWithStart, v)
                         end
                     end
-                    println("    Unknowns with start values: ", getNames(eq, vWithStart))
+                    println("    Unknowns with start or init values: ", getNames(eq, vWithStart))
                 end
 
                 tearEquationsWithCandidates!(eq)
@@ -1458,47 +1460,88 @@ function getSortedAndSolvedAST(Goriginal,     # Typically ::Vector{Vector{Int}}
     end
 
 
-    # Store state information in equationInfo and print ODE states
-    x_info = eq.equationInfo.x_info
+    # Store state information in equationInfo
+    x_info            = eq.equationInfo.x_info
+    x_without_start   = Int[]
+    x_vec             = Int[]
+    x_vec_startOrInit = Any[]
+    x_vec_fixed       = Bool[]
     for v in ODE_states
-        v_der_x            = eq.A[v]
+        (v_startOrInit, v_fixed) = eq.fc.var_startInitFixed(v)
+        if isnothing(v_startOrInit)
+            push!(x_without_start, v)
+        end
+        v_name = eq.fc.var_name(v)
+        
+        if isFixedLengthStartOrInit(v_startOrInit, v_name)
+            v_der_x            = eq.A[v]
+            v_unit             = unitless ? "" : eq.fc.var_unit(v)
+            v_julia_name       = eq.fc.var_julia_name(v)
+            v_der_x_name       = eq.fc.var_name(v_der_x)
+            v_der_x_julia_name = eq.fc.var_julia_name(v_der_x)
+            v_nominal          = eq.fc.var_nominal(v)
+            v_unbounded        = eq.fc.var_unbounded(v)
+            v_stateCategory    = ModiaBase.XD
+    
+            push!(x_info, ModiaBase.StateElementInfo(
+                            v_name, v_julia_name,
+                            v_der_x_name, v_der_x_julia_name,
+                            v_stateCategory, v_unit, v_startOrInit, v_fixed,
+                            v_nominal, v_unbounded))
+        else
+            # length(v_startOrInit) may change after compilation
+            push!(x_vec            , v)
+            push!(x_vec_startOrInit, v_startOrInit)   
+            push!(x_vec_fixed      , v_fixed)            
+        end
+    end
+    eq.equationInfo.nxFixedLength = length(x_info)
+    for (i,v) in enumerate(x_vec)
+        v_startOrInit      = x_vec_startOrInit[i]
+        v_fixed            = x_vec_fixed[i]
         v_name             = eq.fc.var_name(v)
-        v_unit             = eq.fc.var_unit(v)
-        v_fixed1           = eq.fc.var_fixed(v)
-        v_fixed2           = typeof(v_fixed1) == Nothing ? false : v_fixed1
+        v_der_x            = eq.A[v]
+        v_unit             = unitless ? "" : eq.fc.var_unit(v)
         v_julia_name       = eq.fc.var_julia_name(v)
         v_der_x_name       = eq.fc.var_name(v_der_x)
         v_der_x_julia_name = eq.fc.var_julia_name(v_der_x)
-        v_length           = eq.fc.var_length(v)
         v_nominal          = eq.fc.var_nominal(v)
         v_unbounded        = eq.fc.var_unbounded(v)
         v_stateCategory    = ModiaBase.XD
-
+        
         push!(x_info, ModiaBase.StateElementInfo(
                         v_name, v_julia_name,
                         v_der_x_name, v_der_x_julia_name,
-                        v_stateCategory, v_length, v_unit, v_fixed2,
-                        v_nominal, v_unbounded))
+                        v_stateCategory, v_unit, v_startOrInit, v_fixed,
+                        v_nominal, v_unbounded))        
     end
-    if log || logStates
+
+    # Handle systems with only algebraic variables, by introducing a dummy
+    # differential equation der_x[1] = -x[1].
+    if length(ODE_states) == 0
+        if log
+            println("Model has only algebraic variables.\n",
+                    "Added a dummy differential equation der(_dummy_x) = -_dummy_x, _dummy_x(t0) = 0")
+        end
+        push!(eq.equationInfo.x_info, ModiaBase.StateElementInfo(
+              "_dummy_x", :(), "der(_dummy_x)", :(), XD, "", 0.0, true, NaN, false))      
+    end
+
+    # Finalize equationInfo 
+    initEquationInfo!(eq.equationInfo)
+    
+    # Print ODE states
+    if logStates
         println("\nSelected ODE states: ")
         x_table = ModiaBase.get_x_table(x_info)
         show(stdout, x_table; allrows=true, allcols=true, summary=false, eltypes=false)
         print("\n\n")
     end
 
-
     # Sort equations and generate sorted AST (eq.AST)
     sortEquations!(eq, Goriginal)
 
-
     # Check that all ODE states have a start value
-    x_without_start = Int[]
-    for v in ODE_states
-        if !eq.fc.var_has_start(v)
-            push!(x_without_start, v)
-        end
-    end
     if length(x_without_start) > 0
         showMessage2("Init/start values missing in the model for some ODE states.";
                      severity  = WARNING,
@@ -1514,8 +1557,6 @@ function getSortedAndSolvedAST(Goriginal,     # Typically ::Vector{Vector{Int}}
                      variables = eq.vTearWithoutStart)
     end
 
-
-
     # Print warning, if there are variables with fixed=true that are
     # explicitly solved for and log=true
     if log && length(eq.equationInfo.vSolvedWithFixedTrue) > 0
@@ -1527,17 +1568,6 @@ function getSortedAndSolvedAST(Goriginal,     # Typically ::Vector{Vector{Int}}
                      variables = eq.vSolvedWithFixedTrue)
     end
 
-
-    # Handle explicitly solved algebraic variables, by introducing a dummy
-    # differential equation der_x[1] = -x[1].
-    if length(ODE_states) == 0
-        if log
-            println("Model has only explicitly solved algebraic variables.\n",
-                    "Added a dummy differential equation der(_dummy_x) = -_dummy_x, _dummy_x(t0) = 0")
-        end
-        push!(eq.equationInfo.x_info, ModiaBase.StateElementInfo(
-              "_dummy_x", :(), "der(_dummy_x)", :(), XD, 1, "", false, NaN, false))
-    end
 
     if log
         println("\n=== getSortedAndSolvedAST(...) terminated for $modelName.\n")
