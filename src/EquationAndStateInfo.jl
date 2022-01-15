@@ -301,29 +301,29 @@ function LinearEquationsIteration(leq::LinearEquations{FloatType}, isInitial::Bo
                 b[i] = -residuals[i]
             end
             leq.mode = 1
-            x[1] = convert(FloatType, 1)
+            x[1] = max(FloatType(1e-3), abs(b[1]))     #convert(FloatType, 1)
             return true
         end
         
-        # residuals = A*x - b -> A[:,j] = residuals + b)
-        j = mode
+        # residuals = A*e_j*x_j - b -> A[:,j] = (residuals + b)/x[j]
+        j = mode            
         for i = 1:nx
-            A[i,j] = residuals[i] + b[i]
-        end
+            A[i,j] = (residuals[i] + b[i])/x[j]
+        end         
         x[j] = 0
     
         if j < nx
             leq.mode += 1
-            x[leq.mode] = convert(FloatType, 1)
+            x[leq.mode] = max(FloatType(1e-3), abs(b[leq.mode]))    # convert(FloatType, 1)           
             return true
         end
         
         # Solve linear equation system
-        if nx == 1       
+        if nx == 1
             x[1] = b[1]/A[1,1]
             if !isfinite(x[1])
                 error("Linear scalar equation system is singular resulting in: ", leq.vTear_names[1], " = ", x[1])
-            end
+            end           
         else
             x .= b
             if leq.useRecursiveFactorization
