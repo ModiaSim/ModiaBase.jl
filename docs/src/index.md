@@ -83,6 +83,17 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ## Release Notes
 
+### Version 0.7.8
+
+- Tests of TestDifferentiate.jl corrected to comply with DiffRules > 1.0
+- Scaling introduced to improve numerics when constructing A-matrix of linear equation system.
+
+
+### Version 0.7.7
+
+- Bug fixed when selecting RecursiveFactorization.jl
+
+
 ### Version 0.7.6
 
 - Fixed bug in StateSelection.jl: If unitless=true, no unit is associated with the tearing variable.
