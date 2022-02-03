@@ -1,7 +1,7 @@
 name = "ModiaBase"
 uuid = "ec7bf1ca-419d-4510-bbab-199861c55244"
 authors = ["Hilding Elmqvist <Hilding.Elmqvist@Mogram.net>", "Martin Otter <Martin.Otter@dlr.de>"]
-version = "0.7.8"
+version = "0.8.0"
 
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
@@ -23,4 +23,4 @@ OrderedCollections = "1"
 RecursiveFactorization = "0.2, 0.1"
 TimerOutputs = "0.5"
 Unitful = "1"
-julia = "1.5"
+julia = "1.7"

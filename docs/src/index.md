@@ -83,6 +83,12 @@ julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
 
 ## Release Notes
 
+### Version 0.8.0
+
+- Require Julia 1.7
+- Upgrade Manifest.toml to version 2.0
+- Update Project.toml/Manifest.toml
+
 ### Version 0.7.8
 
 - Tests of TestDifferentiate.jl corrected to comply with DiffRules > 1.0
