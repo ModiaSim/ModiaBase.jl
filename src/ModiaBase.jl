@@ -9,8 +9,8 @@ Main module of ModiaBase.
 module ModiaBase
 
 const path    = dirname(dirname(@__FILE__))   # Absolute path of package directory
-const Version = "0.7.8"
-const Date    = "2022-02-02"
+const Version = "0.8.1"
+const Date    = "2022-02-05"
 
 #println("\nImporting ModiaBase Version $Version ($Date)")
 

@@ -42,7 +42,7 @@ but can also be utilized in another context. Especially the following functional
 ## Installation
  
 Typically, a user installs [Modia](https://github.com/ModiaSim/Modia.jl) and does not need
-to install ModiaBase separately. If needed, ModiaBase is installed with (Julia >= 1.5 is required):
+to install ModiaBase separately. If needed, ModiaBase is installed with (Julia 1.7 is required):
 
 ```julia
 julia> ]add ModiaBase

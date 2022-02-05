@@ -68,20 +68,19 @@ The following extensions are planned (internal prototypes are available):
 
 ## Installation
 
-The package is registered and is installed with (Julia >= 1.5 is required):
+The package is registered and is installed with (Julia 1.7 is required):
 
 ```julia
 julia> ]add ModiaBase
 ```
 
 
-It is recommended to also add the following packages, in order that all tests and examples can be executed:
-
-```julia
-julia> ]add Unitful, Measurements, MonteCarloMeasurements, Distributions
-```
-
 ## Release Notes
+
+### Version 0.8.1
+
+- Update Project.toml, Manifest.toml, README.md
+
 
 ### Version 0.8.0
 
