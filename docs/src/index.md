@@ -77,6 +77,25 @@ julia> ]add ModiaBase
 
 ## Release Notes
 
+### Version 0.9.0
+
+- Hierarchical names in function calls supported (e.g. a.b.c.f(..)).
+
+- Efficiency of linear equations setup changed (memory allocation drastically reduced)
+
+- Include DAE-Mode in solution of linear equation system (if DAE integrator is used and all unknowns of linear
+  equation system are part of the DAE states, solve the linear equation system during continuous integration
+  via DAE solver (= usually large speed-up, for larger linear equation system).
+
+- Large speedup of symbolic transformation, if function depends on many input arguments 
+  (includes new operator implicitDependency(..)).
+  
+- Support for StaticArrays variables (the StaticArrays feature is kept in the generated AST).
+  
+- Support for Array variables (especially of state and tearing variables)
+  where the dimension can change after @instantiateModel(..)
+  
+
 ### Version 0.8.1
 
 - Update Project.toml, Manifest.toml, README.md

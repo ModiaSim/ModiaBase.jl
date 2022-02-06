@@ -9,12 +9,19 @@ Main module of ModiaBase.
 module ModiaBase
 
 const path    = dirname(dirname(@__FILE__))   # Absolute path of package directory
-const Version = "0.8.1"
-const Date    = "2022-02-05"
+const Version = "0.9.0"
+const Date    = "2022-02-06"
 
 #println("\nImporting ModiaBase Version $Version ($Date)")
 
 using Unitful
+import StaticArrays
+
+
+# append! as needed in EquationAndStateInfo.jl and in ModiaLang/src/CodeGeneration.jl
+appendVariable!(v1::AbstractVector, s::Number)          = push!(v1,s)
+appendVariable!(v1::AbstractVector, v2::AbstractVector) = append!(v1,v2)
+
 
 include("LinearIntegerEquations.jl")
 

@@ -99,6 +99,8 @@ function makeDerVar(ex::Expr, parameters, inputs, evaluateParameters=false)
         end
     elseif ex.head == :.
         Symbol(ex)
+    elseif ex.head == :call # Don't change dot-notation for function calls
+        Expr(ex.head, ex.args[1], [makeDerVar(arg, parameters, inputs, evaluateParameters) for arg in ex.args[2:end]]...)
     else
         Expr(ex.head, [makeDerVar(arg, parameters, inputs, evaluateParameters) for arg in ex.args]...)
     end
@@ -253,21 +255,25 @@ Traverses an expression and finds incidences of Symbols and der(...)
 * `ex`: Expression or array of expressions
 * `incidence`: array of incidences. New incidences of `ex` are pushed. 
 """
-findIncidence!(ex, incidence::Array{Incidence,1}) = nothing
-findIncidence!(s::Symbol, incidence::Array{Incidence,1}) = begin if ! (s in [:(:), :end]); push!(incidence, s) end end
-findIncidence!(arr::Array{Any,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
-findIncidence!(arr::Array{Expr,1}, incidence::Array{Incidence,1}) = [findIncidence!(a, incidence) for a in arr]
-function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
+findIncidence!(ex, incidence::Array{Incidence,1}, includeX::Bool=true) = nothing
+findIncidence!(s::Symbol, incidence::Array{Incidence,1}, includeX::Bool=true) = begin if ! (s in [:(:), :end]); push!(incidence, s) end end
+findIncidence!(arr::Array{Any,1}, incidence::Array{Incidence,1}, includeX::Bool=true) = [findIncidence!(a, incidence, includeX) for a in arr]
+findIncidence!(arr::Array{Expr,1}, incidence::Array{Incidence,1}, includeX::Bool=true) = [findIncidence!(a, incidence, includeX) for a in arr]
+function findIncidence!(ex::Expr, incidence::Array{Incidence,1}, includeX::Bool=true)
     if ex.head == :macrocall && ex.args[1] == Symbol("@u_str")
-        nothing    
+        nothing  
+    elseif isexpr(ex, :function)
+        nothing  
     elseif ex.head == :call
         if ex.args[1] == :der
             push!(incidence, ex) # der(x)
-            push!(incidence, ex.args[2]) # x
+            if includeX
+                push!(incidence, ex.args[2]) # x
+            end
         elseif ex.args[1] in [:pre, :previous]
-            [findIncidence!(e, incidence) for e in ex.args[3:end]] # skip operator/function name and first argument
+            [findIncidence!(e, incidence, includeX) for e in ex.args[3:end]] # skip operator/function name and first argument
 		else
-            [findIncidence!(e, incidence) for e in ex.args[2:end]] # skip operator/function name
+            [findIncidence!(e, incidence, includeX) for e in ex.args[2:end]] # skip operator/function name
         end
     elseif ex.head == :.
         push!(incidence, ex)
@@ -277,13 +283,13 @@ function findIncidence!(ex::Expr, incidence::Array{Incidence,1})
     elseif ex.head == :generator
         vars = [v.args[1] for v in ex.args[2:end]]
         incid = Incidence[]
-        [findIncidence!(e, incid) for e in ex.args]
+        [findIncidence!(e, incid, includeX) for e in ex.args]
         unique!(incid)
         setdiff!(incid, vars)
         push!(incidence, incid...)
     else
         # For example: =, vect, hcat, block, ref
-        [findIncidence!(e, incidence) for e in ex.args]
+        [findIncidence!(e, incidence, includeX) for e in ex.args]
     end
     nothing
 end
@@ -310,6 +316,9 @@ function linearFactor(ex::Expr, x::Incidence)
         (ex, 0, true)
     elseif isexpr(ex, :call)
         func = ex.args[1]
+        if func in [:_DUPLICATEEQUATION, :_DUPLICATIMPLICITDEPENDENCY, :implicitDependency]
+            return (ex, 0, false)
+        end
         arguments = ex.args[2:end]
         factored = [linearFactor(a, x) for a in arguments]
         rests = [f[1] for f in factored]
@@ -510,6 +519,19 @@ function testSubstitutions()
     @show ex
     ex = substitute(Dict(:b=>0.0), :(a+b*(c+d)=0))
     @show ex
+
+    println("TEST getCoefficients")
+    n = 10000
+    @show n
+    e = Expr(:call, :f, fill(:x, n)...)
+#    @show e
+    @time incidence, coefficients, rest, linear = getCoefficients(e)
+#    @show incidence coefficients rest linear
+
+    e = Expr(:call, :_DUPLICATEEQUATION, fill(:x, n)...)
+#    @show e
+    @time incidence, coefficients, rest, linear = getCoefficients(e)
+#    @show incidence coefficients rest linear
 end
 
 # testSubstitutions()

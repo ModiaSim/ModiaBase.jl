@@ -51,6 +51,8 @@ function mult(x, y)
         y
     elseif y == 1 && ! isUnit(x)
         x  
+    elseif x == -1 && ! isUnit(y)
+        sub(0, y)  
     else
         :($x * $y)
     end
@@ -59,9 +61,9 @@ end
 function divide(x, y)
     if typeof(x) in [Float64, Int64] && typeof(y) in [Float64, Int64]
         x / y
-    elseif x === 0
+    elseif x == 0 || x == 0.0
         0
-    elseif y === 1 
+    elseif y === 1 || y == 1.0
         x  
     elseif y === -1
         sub(0, x)  
