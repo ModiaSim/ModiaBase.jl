@@ -49,7 +49,8 @@ function testDifferentiate()
     @test showDifferentiate(:(x / y)) == "(one(x) / y) * der(x) + -((x / y) / y) * der(y)"
 #    @test showDifferentiate(:(x / y / z)) == "(one(x / y) / z) * ((one(x) / y) * der(x) + -((x / y) / y) * der(y)) + -(((x / y) / z) / z) * der(z)"
     @test showDifferentiate(:(x ^ 2)) == "(2 * x ^ (2 - 1)) * der(x)"
-    @test showDifferentiate(:(x ^ y)) == "(y * x ^ (y - 1)) * der(x) + (x ^ y * log(x)) * der(y)"
+    @test showDifferentiate(:(x ^ y)) ==  "(y * x ^ (y - 1)) * der(x) + if x isa Real && x <= 0\n            Base.oftype(float(x), NaN)\n        else\n            x ^ y * log(x)\n        end * der(y)"
+
 #    @test showDifferentiate(:(x ^ y ^ z)) == "(y ^ z * x ^ (y ^ z - 1)) * der(x) + (x ^ (y ^ z) * log(x)) * ((z * y ^ (z - 1)) * der(y) + (y ^ z * log(y)) * der(z))"
 
     @test showDifferentiate(:(sin(x))) == "cos(x) * der(x)"
@@ -141,8 +142,9 @@ function testDifferentiate()
     @test der == "der(y) = exp(x) * der(x)"
   
     der = showDifferentiate(:(z = x^y))
-    @test der == "der(z) = (y * x ^ (y - 1)) * der(x) + (x ^ y * log(x)) * der(y)"
-
+    #@test der == "der(z) = (y * x ^ (y - 1)) * der(x) + (x ^ y * log(x)) * der(y)"
+    @test der == "der(z) = (y * x ^ (y - 1)) * der(x) + if x isa Real && x <= 0\n                Base.oftype(float(x), NaN)\n            else\n                x ^ y * log(x)\n            end * der(y)"
+    
     der = showDifferentiate(:(y = log(x)))
     @test der == "der(y) = inv(x) * der(x)"
   

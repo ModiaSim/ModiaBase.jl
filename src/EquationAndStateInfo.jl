@@ -99,7 +99,7 @@ Define linear equation system "A*x=b" with `x::Vector{FloatType}`.
 
 - `x_vec_julia_names` are the Julia names of the vector-valued elements.
 
-- If `A_is_constant = true` then `A` is a matrix that is constant after initialization.
+- If `A_is_constant = true` then `A` is a matrix that is constant after initialization
 
 - If length(x) <= useRecursiveFactorizationUptoSize, then linear equation systems will be solved with
   `RecursiveFactorization.jl` instead of the default `lu!(..)` and `ldiv!(..)`.
@@ -174,7 +174,7 @@ mutable struct LinearEquations{FloatType <: Real}
         new(true, A_is_constant, x_names, Any[], x_lengths, nx_fixedLength, x_vec,
             zeros(FloatType,nx,nx), zeros(FloatType,nx), zeros(FloatType,nx), fill(0,nx), zeros(FloatType,nx),
             -2, 0, niter_max, false, String[], String[],
-            useRecursiveFactorizationUptoSize, useRecursiveFactorization)
+            useRecursiveFactorizationUptoSize, useRecursiveFactorization)      
     end
 end
 LinearEquations(args...) = LinearEquations{Float64}(args...)
@@ -425,21 +425,21 @@ function LinearEquationsIteration!(leq::LinearEquations{FloatType}, isInitial::B
                 b[i] = -residuals[i]
             end
             leq.mode = 1
-            x[1] = convert(FloatType, 1)
+            x[1] = max(FloatType(1e-3), abs(b[1]))     #convert(FloatType, 1)
             empty!(leq.residuals)
             return copy_x_into_x_vec!(leq)
         end
 
-        # residuals = A*x - b -> A[:,j] = residuals + b)
+        # residuals = A*e_j*x_j - b -> A[:,j] = (residuals + b)/x[j]
         j = mode
         for i = 1:nx
-            A[i,j] = residuals[i] + b[i]
-        end
+            A[i,j] = (residuals[i] + b[i])/x[j]
+        end         
         x[j] = 0
 
         if j < nx
             leq.mode += 1
-            x[leq.mode] = convert(FloatType, 1)
+            x[leq.mode] = max(FloatType(1e-3), abs(b[leq.mode]))    # convert(FloatType, 1)       
             empty!(leq.residuals)
             return copy_x_into_x_vec!(leq)
         end
