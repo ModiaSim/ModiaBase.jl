@@ -61,7 +61,7 @@ end
 
     d1   = x1_sol-x1
     err1 = sqrt(d1'*d1) + abs(x2_sol - x2)
-    @test isapprox(err1, 0.0, atol=1e-15)
+    @test isapprox(err1, 0.0, atol=1e-13)
 
 
     # Test DAE mode
@@ -71,7 +71,7 @@ end
     (x1,x2) = solveLinearEquation(leq,false,true,false,time,timer)
     d2   = x1_sol-x1
     err2 = sqrt(d2'*d2) + abs(x2_sol - x2)
-    @test isapprox(err2, 0.0, atol=1e-15)
+    @test isapprox(err2, 0.0, atol=1e-13)
 
     # x is computed by DAE solver
     leq.x = [6.0, 1.0, 2.0, 3.0, 4.0, 5.0]  # Provide x from DAE solver
