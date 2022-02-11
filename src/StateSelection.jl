@@ -901,9 +901,9 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool, u
             if v_startOrInit isa AbstractVector
                 # v is a vector
                 if v_unit == ""
-                    push!(while_body, :( $v_julia_name = SVector{$v_length}(_leq_mode.x[$i1:$i2])) )
+                    push!(while_body, :( $v_julia_name = ModiaBase.SVector{$v_length}(_leq_mode.x[$i1:$i2])) )
                 else
-                    push!(while_body, :( $v_julia_name = SVector{$v_length}(_leq_mode.x[$i1:$i2])*@u_str($v_unit)) )
+                    push!(while_body, :( $v_julia_name = ModiaBase.SVector{$v_length}(_leq_mode.x[$i1:$i2])*@u_str($v_unit)) )
                 end
             elseif v_startOrInit isa Number || v_startOrInit isa Nothing
                 # v is a scalar or nothing (= assumed to be a scalar)
@@ -967,7 +967,7 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool, u
     # Construct for-loop
     leq_index = length(eq.equationInfo.linearEquations)
     while_loop = quote
-        global $(vAssigned_names...)
+        local $(vAssigned_names...)
         _leq_mode = initLinearEquationsIteration!(_m, $leq_index)
         ModiaBase.TimerOutputs.@timeit _m.timer "LinearEquationsIteration" while ModiaBase.LinearEquationsIteration!(_leq_mode, _m.isInitial, _m.solve_leq, _m.storeResult, _m.time, _m.timer)
             $(while_body...)
