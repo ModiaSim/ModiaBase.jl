@@ -71,6 +71,21 @@ function prependPar(ex::Expr, prefix, parameters=[], inputs=[])
 end
 
 """
+    e = castToValueType(ex,value)
+
+Cast `ex` to `typeof(value)` if this is a numeric data datatype (`eltype(value) <: Number`).
+As a result, the generated code of `ex` will have the correct type instead of `Any`, so will be more efficient.
+"""
+function castToValueType(ex,value)
+    if eltype(value) <: Number
+        valueType = typeof(value)
+        :($valueType($ex))
+    else
+        ex
+    end
+end
+
+"""
     e = makeDerVar(ex)
 
 Recursively converts der(x) to Symbol(:(der(x))) in expression `ex`
@@ -78,9 +93,19 @@ Recursively converts der(x) to Symbol(:(der(x))) in expression `ex`
 * `ex`: Expression or array of expressions
 * `return `e`: ex with der(x) converted 
 """
-makeDerVar(ex, parameters, inputs, evaluateParameters=false) = if typeof(ex) in [Symbol, Expr] && 
-    ( ex in keys(parameters) || ex in keys(inputs) ); prependPar(ex, :(_p), parameters, inputs) 
-    else ex end
+function makeDerVar(ex, parameters, inputs, evaluateParameters=false) 
+    if typeof(ex) in [Symbol, Expr]
+        if ex in keys(parameters)
+            castToValueType( prependPar(ex, :(_p), parameters, inputs),  parameters[ex] )
+        elseif ex in keys(inputs)
+            prependPar(ex, :(_p), parameters, inputs)
+        else 
+            ex
+        end
+    else
+        ex
+    end
+end
 
 function makeDerVar(ex::Expr, parameters, inputs, evaluateParameters=false)
     if ex.head == :call && ex.args[1] == :der
@@ -89,7 +114,7 @@ function makeDerVar(ex::Expr, parameters, inputs, evaluateParameters=false)
         if evaluateParameters
             parameters[ex]
         else
-            prependPar(ex, :(_p), parameters, inputs)
+            castToValueType( prependPar(ex, :(_p), parameters, inputs), parameters[ex] )
         end
 	elseif isexpr(ex, :.) && ex in keys(inputs)
         if evaluateParameters
@@ -134,7 +159,12 @@ function prepend(ex::Expr, prefix)
             Expr(ex.head, ex.args[1], [prepend(arg, prefix) for arg in ex.args[2:end]]...)
         end
     elseif ex.head == :macrocall
-        eval(ex)
+        if length(ex.args) >= 1 && ex.args[1] == Symbol("@u_str")
+            # Do not expand  units, such as u"s", because otherwise logCode=true results in wrong code, because show(u"N") is N and not u"N".
+            ex
+        else
+            eval(ex)
+        end    
     else
         Expr(ex.head, [prepend(arg, prefix) for arg in ex.args]...)
     end
