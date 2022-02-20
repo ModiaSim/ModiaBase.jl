@@ -71,15 +71,29 @@ function prependPar(ex::Expr, prefix, parameters=[], inputs=[])
 end
 
 """
-    e = castToValueType(ex,value)
+    e = castToFloatType(ex,value)
 
-Cast `ex` to `typeof(value)` if this is a numeric data datatype (`eltype(value) <: Number`).
-As a result, the generated code of `ex` will have the correct type instead of `Any`, so will be more efficient.
+If manageable, cast `ex` to FloatType, if this is an `AbstractFloat` (`typeof(value) <: AbstractFloat`)
+and define it to be FloatType (called _FloatType in getDerivatives), so `FloatType(ex)::FloatType`. 
+
+If this is not manageable, cast `ex` to `valueType = typeof(value)` if this is a numeric data datatype 
+(`eltype(value) <: Number`), and define it to be `valueType`, so `valueType(ex)::valueType`.
+
+As a result, the generated code of `ex` will have the correct type instead of `Any`, 
+so will be more efficient and no unnecessary memory will be calculated at run-time.
+
+Note, this function should only be used on parameter, init, or start values.
 """
-function castToValueType(ex,value)
+function castToFloatType(ex,value)
     if eltype(value) <: Number
         valueType = typeof(value)
-        :($valueType($ex))
+        if valueType <: AbstractFloat && !(valueType <: Unitful.AbstractQuantity || 
+                                           valueType <: Measurements.Measurement ||
+                                           valueType <: MonteCarloMeasurements.AbstractParticles)
+            :( _FloatType($ex)::_FloatType )
+        else
+            :( $valueType($ex)::$valueType )
+        end
     else
         ex
     end
@@ -96,7 +110,7 @@ Recursively converts der(x) to Symbol(:(der(x))) in expression `ex`
 function makeDerVar(ex, parameters, inputs, evaluateParameters=false) 
     if typeof(ex) in [Symbol, Expr]
         if ex in keys(parameters)
-            castToValueType( prependPar(ex, :(_p), parameters, inputs),  parameters[ex] )
+            castToFloatType( prependPar(ex, :(_p), parameters, inputs),  parameters[ex] )
         elseif ex in keys(inputs)
             prependPar(ex, :(_p), parameters, inputs)
         else 
@@ -114,7 +128,7 @@ function makeDerVar(ex::Expr, parameters, inputs, evaluateParameters=false)
         if evaluateParameters
             parameters[ex]
         else
-            castToValueType( prependPar(ex, :(_p), parameters, inputs), parameters[ex] )
+            castToFloatType( prependPar(ex, :(_p), parameters, inputs), parameters[ex] )
         end
 	elseif isexpr(ex, :.) && ex in keys(inputs)
         if evaluateParameters
