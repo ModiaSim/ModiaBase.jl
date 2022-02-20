@@ -52,7 +52,7 @@ CurrentModule = ModiaBase
 StateCategory
 ResidualCategory
 LinearEquations
-LinearEquationsIteration
+LinearEquationsIteration!
 EquationInfo
 StateElementInfo
 ```

@@ -220,7 +220,7 @@ function getDerivatives(_der_x, _x, _m, _time)::Nothing
         local var"C.i", var"R.v", var"Ri.v", var"R.p.v"
         _leq_mode = _m.linearEquations[1]
         _leq_mode.mode = -2
-        while ModiaBase.LinearEquationsIteration(_leq_mode, _m.isInitial, _m.time, _m.timer)
+        while ModiaBase.LinearEquationsIteration!(_leq_mode, _m.isInitial, _m.time, _m.timer)
             var"C.i" = _leq_mode.vTear_value[1]
             var"R.v" = (_p[:R])[:R] * var"C.i"
             var"Ri.v" = (_p[:Ri])[:R] * -var"C.i"

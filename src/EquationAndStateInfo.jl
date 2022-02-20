@@ -104,7 +104,7 @@ Define linear equation system "A*x=b" with `x::Vector{FloatType}`.
 - If length(x) <= useRecursiveFactorizationUptoSize, then linear equation systems will be solved with
   `RecursiveFactorization.jl` instead of the default `lu!(..)` and `ldiv!(..)`.
 
-For details how to use this constructor, see [`LinearEquationsIteration`](@ref).
+For details how to use this constructor, see [`LinearEquationsIteration!`](@ref).
 """
 mutable struct LinearEquations{FloatType <: Real}
     odeMode::Bool                     # Set from the calling function after LinearEquations was instantiated (default: true)
@@ -137,7 +137,7 @@ mutable struct LinearEquations{FloatType <: Real}
     residuals::Vector{FloatType}      # Values of the residuals FloatType vector; length(residuals) = length(x)
 
     # Iteration status of for-loop
-    mode::Int       # Operational mode (see function LinearEquationsIteration)
+    mode::Int       # Operational mode (see function LinearEquationsIteration!)
     niter::Int      # Current number of iterations in the fix point iteration scheme
     niter_max::Int  # Maximum number of iterations
     success::Bool   # = true, if solution of A*x = b is successfully computed
@@ -216,7 +216,7 @@ function getDerivatives!(_der_x, _x, _m, _time)::Nothing
     ...
     _leq      = _m.linearEquations[<nr>]   # leq::LinearEquations{FloatType}
     _leq.mode = -3  # initializes the iteration
-    while LinearEquationsIteration(_leq, _m.isInitial, _m.solve_leq, _m.storeResult, _m.time, _m.timer)
+    while LinearEquationsIteration!(_leq, _m.isInitial, _m.solve_leq, _m.storeResult, _m.time, _m.timer)
         x1 = _leq.x[1]
         x2 = _leq.x[2]
         x3 = _leq.x_vec[1]
@@ -250,7 +250,7 @@ and used in subsequent calls to solve the equation system.
 
 - `leq::LinearEquations{FloatType}`: Instance of `LinearEquations`.
 - `isInitial::Bool`: = true: Called during initialization.
-- `solve::Bool`: = true: leq.x is computed by LinearEquationsIteration.
+- `solve::Bool`: = true: leq.x is computed by LinearEquationsIteration!.
                  = false: leq.x has been set by calling environment
                           (typically when called from DAE integrator).
                           Note, at events and at terminate, solve must be true).
@@ -281,7 +281,7 @@ leq.mode >  0: Compute "residuals .= A*e_i - b"   # e_i = unit vector with i = l
 # Hidden argument `leq.mode::Int` on input
 
 ```julia
-leq.mode = -3  # LinearEquationsIteration is called the first time
+leq.mode = -3  # LinearEquationsIteration! is called the first time
                if leq.odeMode || solve
                   # ODE mode or DAE mode at an event (solve "x" from equation "residuals = A*x - b")
                   # Initialize fixed point iteration or continue fixed point iteration (if in DAE mode)
@@ -353,7 +353,7 @@ function LinearEquationsIteration!(leq::LinearEquations{FloatType}, isInitial::B
     nx   = length(leq.x)
 
     if mode == -3
-        # LinearEquationsIteration is called the first time in the current model evaluation
+        # LinearEquationsIteration! is called the first time in the current model evaluation
         leq.niter = 0      # Number of event iterations
         empty!(leq.inconsistentPositive)
         empty!(leq.inconsistentNegative)
@@ -410,7 +410,7 @@ function LinearEquationsIteration!(leq::LinearEquations{FloatType}, isInitial::B
     residuals = leq.residuals
 
     if length(residuals) != length(x)
-        error("Function LinearEquationsIteration wrongly used:\n",
+        error("Function LinearEquationsIteration! wrongly used:\n",
               "length(leq.residuals) = ", length(leq.residuals), ", length(leq.x) = ", length(leq.x))
     end
 
@@ -453,12 +453,12 @@ function LinearEquationsIteration!(leq::LinearEquations{FloatType}, isInitial::B
         else
             x .= b
             if leq.useRecursiveFactorization
-                ModiaBase.TimerOutputs.@timeit timer "ModiaBase LinearEquationsIteration (solve A*x=b Rec.Fac.)" begin
+                ModiaBase.TimerOutputs.@timeit timer "ModiaBase LinearEquationsIteration! (solve A*x=b Rec.Fac.)" begin
                     leq.luA = RecursiveFactorization.lu!(A, leq.pivots)
                     ldiv!(leq.luA, x)
                 end
             else
-                ModiaBase.TimerOutputs.@timeit timer "ModiaBase LinearEquationsIteration (solve A*x=b)" begin
+                ModiaBase.TimerOutputs.@timeit timer "ModiaBase LinearEquationsIteration! (solve A*x=b)" begin
                     leq.luA = lu!(A)
                     ldiv!(leq.luA, x)
                 end
