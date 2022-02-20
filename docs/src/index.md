@@ -77,7 +77,7 @@ julia> ]add ModiaBase
 
 ## Release Notes
 
-### Version 0.9.0-dev
+### Version 0.9.0
 
 Non-backwards compatible improvements
 
@@ -105,7 +105,9 @@ Other improvements
 - Included DAE-Mode in solution of linear equation system (if DAE integrator is used and all unknowns of a linear
   equation system are part of the DAE states, solve the linear equation system during continuous integration
   via DAE solver (= usually large simulation speed-up, for larger linear equation systems)  
- 
+
+- Improved code generation of linear equation systems lead to more efficient solution of linear equation systems.
+
 Bug fixes
 
 - Do no longer expand the unit macro in the AST, such as `u"N"`, because otherwise `logCode=true` results in wrong code
