@@ -901,9 +901,9 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool, u
             if v_startOrInit isa AbstractVector
                 # v is a vector
                 if v_unit == ""
-                    push!(while_body, :( $v_julia_name = ModiaBase.SVector{$v_length}(_leq_mode.x[$i1:$i2])) )
+                    push!(while_body, :( $v_julia_name = ModiaBase.SVector{$v_length,_FloatType}(_leq_mode.x[$i1:$i2])::ModiaBase.SVector{$v_length,_FloatType}) )
                 else
-                    push!(while_body, :( $v_julia_name = ModiaBase.SVector{$v_length}(_leq_mode.x[$i1:$i2])*@u_str($v_unit)) )
+                    push!(while_body, :( $v_julia_name = ModiaBase.SVector{$v_length}(_leq_mode.x[$i1:$i2])::ModiaBase.SVector{$v_length,_FloatType}*@u_str($v_unit)) )
                 end
             elseif v_startOrInit isa Number || v_startOrInit isa Nothing
                 # v is a scalar or nothing (= assumed to be a scalar)
@@ -955,7 +955,7 @@ function addLinearEquations!(eq::EquationGraph, hasConstantCoefficients::Bool, u
     # Add residual equations
     #   appendResidual!(leq.residuals, < equation in residual form >)
     for (i,e) in enumerate(eq.eResiduals)
-        e_AST = eq.fc.getResidualEquationAST(e, :(_leq_mode.residual_value[$i]) )
+        e_AST = eq.fc.getResidualEquationAST(e, :(_leq_mode.residuals[$i]) )
         if !isnothing(e_AST)
             push!(while_body, e_AST)
         end
