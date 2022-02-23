@@ -77,6 +77,15 @@ julia> ]add ModiaBase
 
 ## Release Notes
 
+### Version 0.9.2
+
+- Minor (efficiency) improvement of linear equation system if iteration variables are SVectors. 
+
+
+### Version 0.9.1
+
+- Update of Manifest.toml file
+
 ### Version 0.9.0
 
 Non-backwards compatible improvements
