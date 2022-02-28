@@ -81,7 +81,7 @@ julia> ]add ModiaBase
 
 **Non-backwards** compatible changes
 
-- EquationAndStateInfo.jl and StateSelection.jl moved to Modia (previously: ModiaLang), because
+- EquationAndStateInfo.jl and StateSelection.jl moved to Modia (ModiaLang is merged into Modia), because
   the AST generation in these files depends on details of CodeGeneration.jl of Modia/ModiaLang.
   
 - TestLinearEquations.jl also moved to Modia/ModiaLang.
