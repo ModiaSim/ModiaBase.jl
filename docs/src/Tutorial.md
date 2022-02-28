@@ -202,7 +202,7 @@ is linear in the iteration variable (`C.i`) and an AST is generated
 to build-up a linear equation system `A*C.i = b` and solve this system numerically
 with an LU decomposition whenever the AST is called (if the equation system has size 1, 
 a simple division is used instead of calling a linear equation solver). Applying
-[`ModiaBase.getSortedAndSolvedAST`](@ref) results basically in a function
+`Modia.getSortedAndSolvedAST` results basically in a function
 `getDerivatives` that can be solved with the many ODE integrators of
 [DifferentialEquations.jl](https://github.com/SciML/DifferentialEquations.jl):
 
