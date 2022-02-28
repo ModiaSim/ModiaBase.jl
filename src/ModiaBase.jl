@@ -14,13 +14,8 @@ const Date    = "2022-02-23"
 
 #println("\nImporting ModiaBase Version $Version ($Date)")
 
-using Unitful
-using StaticArrays
-
-
-# append! as needed in EquationAndStateInfo.jl and in ModiaLang/src/CodeGeneration.jl
-appendVariable!(v1::Vector{FloatType}, s::FloatType) where {FloatType} = push!(v1,s)
-appendVariable!(v1::Vector{FloatType}, v2)           where {FloatType} = append!(v1,v2)
+using  Unitful
+using  StaticArrays
 
 include("LinearIntegerEquations.jl")
 
@@ -40,8 +35,5 @@ using .Simplify
 
 include("Symbolic.jl")
 using .Symbolic
-
-include("EquationAndStateInfo.jl")
-include("StateSelection.jl")
 
 end
