@@ -77,6 +77,16 @@ julia> ]add ModiaBase
 
 ## Release Notes
 
+### Version 0.10.0
+
+**Non-backwards** compatible changes
+
+- EquationAndStateInfo.jl and StateSelection.jl moved to Modia (ModiaLang is merged into Modia), because
+  the AST generation in these files depends on details of CodeGeneration.jl of Modia/ModiaLang.
+  
+- TestLinearEquations.jl also moved to Modia/ModiaLang.
+
+
 ### Version 0.9.2
 
 - Minor (efficiency) improvement of linear equation system if iteration variables are SVectors. 
