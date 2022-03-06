@@ -77,6 +77,12 @@ julia> ]add ModiaBase
 
 ## Release Notes
 
+### Version 0.11.0
+
+- Moved ModiaBase.Symbolic.makeDerVar to Modia (because makeDerVar needs FloatType for
+  generating type-stable code and FloatType is available in Modia but not in ModiaBase).
+
+
 ### Version 0.10.0
 
 **Non-backwards** compatible changes
