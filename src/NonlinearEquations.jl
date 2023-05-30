@@ -600,7 +600,7 @@ function solveUnderdeterminedNonlinearEquations!( F!::Function,
         end
 
         # Compute QR-factorization of Jacobian
-        jacqr = qr(jac, Val(true))
+        jacqr = qr(jac, ColumnNorm())
 
         # Solve linear system -F'(x^k) * dx^k = F(x^k)
         ldiv!(dx, jacqr, fxk)
