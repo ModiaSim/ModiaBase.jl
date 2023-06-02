@@ -43,6 +43,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = mild
         restricted = false
         quasi = true
+        forwardjac = false
 
         if loglevel >= info
             println("Linear problem:")
@@ -55,7 +56,7 @@ println("... Test NonlinearEquations.jl")
             println("* scale vector = $fscale")
         end
 
-        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
         if loglevel == debug
             println("* solution = $x")
@@ -68,7 +69,7 @@ println("... Test NonlinearEquations.jl")
     end
 
 
-    # Determined test from https://www.zib.de/codelib/NewtonLib/nleq_err.tar
+    # Determined test from https://www.zib.de/codelib/NewtonLib/
     @testset "... Test Chebyquad problem of dimensions 2..7" begin
 
         # Test function
@@ -108,11 +109,12 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = high
         restricted = false
         quasi = true
+        forwardjac = false
 
         for n = 2:nn
 
             if n == 6
-                continue  # NLEQ_ERR does not converge for n = 6, 8, 9
+                continue
             end
 
             if loglevel >= info
@@ -130,7 +132,7 @@ println("... Test NonlinearEquations.jl")
                 println("* scale vector = $fscale")
             end
 
-            converged = solveNonlinearEquations!(fx!, n, x, fscale; nonlinearity=high, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+            converged = solveNonlinearEquations!(fx!, n, x, fscale; nonlinearity=high, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
             if loglevel == debug
                 println("* solution = $x")
@@ -179,6 +181,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = high
         restricted = false
         quasi = true
+        forwardjac = false
 
         for ii in 1:2
             if loglevel >= info
@@ -196,7 +199,7 @@ println("... Test NonlinearEquations.jl")
                 println("* scale vector = $fscale")
             end
 
-            converged = solveNonlinearEquations!(f_2by2!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+            converged = solveNonlinearEquations!(f_2by2!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
             if loglevel == debug
                 println("* solution = $x")
@@ -233,6 +236,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = high
         restricted = false
         quasi = true
+        forwardjac = false
 
         if loglevel >= info
             println("MINPACK Powell singular problem:")
@@ -244,7 +248,7 @@ println("... Test NonlinearEquations.jl")
             println("* scale vector = $fscale")
         end
 
-        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
         if loglevel == debug
             println("* solution = $x")
@@ -280,6 +284,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = high
         restricted = false
         quasi = true
+        forwardjac = false
 
         if loglevel >= info
             println("MINPACK Powell badly scaled problem:")
@@ -291,7 +296,7 @@ println("... Test NonlinearEquations.jl")
             println("* scale vector = $fscale")
         end
 
-        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
         if loglevel == debug
             println("* solution = $x")
@@ -333,6 +338,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = high
         restricted = false
         quasi = true
+        forwardjac = true
 
         if loglevel >= info
             println("MINPACK Wood problem:")
@@ -344,7 +350,7 @@ println("... Test NonlinearEquations.jl")
             println("* scale vector = $fscale")
         end
 
-        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
         if loglevel == debug
             println("* solution = $x")
@@ -390,6 +396,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = high
         restricted = false
         quasi = true
+        forwardjac = false
 
         if loglevel >= info
             println("MINPACK helical valey problem:")
@@ -401,7 +408,7 @@ println("... Test NonlinearEquations.jl")
             println("* scale vector = $fscale")
         end
 
-        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
         if loglevel == debug
             println("* solution = $x")
@@ -423,6 +430,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = high
         restricted = false
         quasi = true
+        forwardjac = true
 
         for n in (6, 9)
 
@@ -471,7 +479,7 @@ println("... Test NonlinearEquations.jl")
                 println("* scale vector = $fscale")
             end
 
-            converged = solveNonlinearEquations!(fx!, n, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+            converged = solveNonlinearEquations!(fx!, n, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
             if loglevel == debug
                 println("* solution = $x")
@@ -517,6 +525,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = extreme
         restricted = true
         quasi = false
+        forwardjac = true
 
         if loglevel >= info
             println("MINPACK trigonometric problem:")
@@ -528,7 +537,7 @@ println("... Test NonlinearEquations.jl")
             println("* scale vector = $fscale")
         end
 
-        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
         if loglevel == debug
             println("* solution = $x")
@@ -561,6 +570,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = high
         restricted = false
         quasi = true
+        forwardjac = false
 
         if loglevel >= info
             println("Determined Rosenbrock problem:")
@@ -572,7 +582,7 @@ println("... Test NonlinearEquations.jl")
             println("* scale vector = $fscale")
         end
 
-        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
         if loglevel == debug
             println("* solution = $x")
@@ -609,6 +619,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = high
         restricted = false
         quasi = false
+        forwardjac = true
 
         if loglevel >= info
             println("Underdeterminded Rosenbrock problem:")
@@ -620,7 +631,7 @@ println("... Test NonlinearEquations.jl")
             println("* scale vector = $fscale")
         end
 
-        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+        converged = solveNonlinearEquations!(fx!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
         if loglevel == debug
             println("* solution = $x")
@@ -663,6 +674,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = mild
         restricted = false
         quasi = true
+        forwardjac = false
 
         if loglevel >= info
             println("Slider-crank initial state problem 1:")
@@ -679,7 +691,7 @@ println("... Test NonlinearEquations.jl")
             println("* scale vector = $fscale\n")
         end
 
-        converged = solveNonlinearEquations!(res_z!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+        converged = solveNonlinearEquations!(res_z!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
         if loglevel == debug
             println("* solution = $x")
@@ -697,7 +709,7 @@ println("... Test NonlinearEquations.jl")
 
 
     # Underdetermined slider-crank initial state problem 2
-    @testset "... Test slider-crank initial state problem 1" begin
+    @testset "... Test slider-crank initial state problem 2" begin
 
         # kinematic parameters
         wheelRadius = 0.1
@@ -726,6 +738,7 @@ println("... Test NonlinearEquations.jl")
         nonlinearity = high
         restricted = false
         quasi = true
+        forwardjac = false
 
         if loglevel >= info
             println("Slider-crank initial state problem 2:")
@@ -743,7 +756,7 @@ println("... Test NonlinearEquations.jl")
             println("* scale vector = $fscale\n")
         end
 
-        converged = solveNonlinearEquations!(res!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, loglevel=loglevel)
+        converged = solveNonlinearEquations!(res!, m, x, fscale; nonlinearity=nonlinearity, restricted=restricted, xtol=tol, maxiter=maxiter, quasi=quasi, forwardjac=forwardjac, loglevel=loglevel)
 
         if loglevel == debug
             println("* solution = $x")

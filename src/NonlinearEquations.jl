@@ -10,6 +10,7 @@ export mild, high, extreme, quiet, info, verbose, debug, solveNonlinearEquations
 using Printf
 using LinearAlgebra
 import ForwardDiff
+import FiniteDiff
 
 @enum Nonlinearity begin
     mild
@@ -45,13 +46,14 @@ end
                              xtol = 1e-6,
                              maxiter = 50,
                              quasi = true,
+                             forwardjac = false,
                              loglevel::Loglevel = info) -> convergence::Bool
 
 Solve nonlinear equation system ``F(x) = 0`` by global Gauss-Newton method with error oriented convergence criterion and adaptive trust region strategy. Optionally Broyden's 'good' Jacobian rank-1 updates are used. In case of underdetermined systems of equations, the 'shortest' least square solution is computed.
 
 `F!` is a C1 continuous function with length ``n`` of input and ``m`` of output vector where ``n >= m`` (determined or underdetermined system of equations). It has to be defined by
     F!(F::Vector, x::Vector) -> success::Bool
-returning true in case of successful evaluation. Jacobian is computed by [ForwardDiff](https://github.com/JuliaDiff/ForwardDiff.jl) package.
+returning true in case of successful evaluation.
 
 `m` is the length of the output vector of `F!`.
 
@@ -69,6 +71,8 @@ returning true in case of successful evaluation. Jacobian is computed by [Forwar
 
 `quasi` enables switch to local quasi Newton iteration (which avoids costly Jacobian evaluations) in case of advanced convergence.
 
+`forwardjac` enables analytic Jacobian evaluation using [ForwardDiff](https://github.com/JuliaDiff/ForwardDiff.jl) package. Otherwise numeric computation by [FiniteDiff](https://github.com/JuliaDiff/FiniteDiff.jl) is used.
+
 `loglevel` is the log message level. Possible @enum values are `quiet`, `info`, `verbose` and `debug`.
 
 Reference: P. Deuflhard: Newton Methods for Nonlinear Problems. - Affine Invariance and Adaptive Algorithms (section 4.4). Series Computational Mathematics 35, Springer (2004).
@@ -82,6 +86,7 @@ function solveNonlinearEquations!(F!::Function,
                                   xtol = 1e-6,
                                   maxiter = 50,
                                   quasi = true,
+                                  forwardjac = false,
                                   loglevel::Loglevel = info)
 
     n = length(x)
@@ -107,7 +112,14 @@ function solveNonlinearEquations!(F!::Function,
     dxbar = similar(x, n)
     fxk = similar(x, m)
     jac = similar(x, m, n)
-    jcfg = ForwardDiff.JacobianConfig(F!, fxk, x)
+    if forwardjac
+        jcfg = ForwardDiff.JacobianConfig(F!, fxk, x)
+    else
+        xche = similar(x, n)
+        fxche1 = similar(x, m)
+        fxche2 = similar(x, m)
+        jche = FiniteDiff.JacobianCache(xche, fxche1, fxche2)
+    end
     dxl = similar(x, n)
     Pdxbar = similar(x, n)
     fxl = similar(x, m)
@@ -197,8 +209,11 @@ function solveNonlinearEquations!(F!::Function,
         end
 
         # 1. Step k: Evaluate Jacobian matrix F'(x^k)
-        # In nleq_err.c fxk is not updated -> inconsistent after return from quasi Gauss-Newton iteration
-        ForwardDiff.jacobian!(jac, F!, fxk, x, jcfg)
+        if forwardjac
+            ForwardDiff.jacobian!(jac, F!, fxk, x, jcfg)
+        else
+            FiniteDiff.finite_difference_jacobian!(jac, F!, x, jche)
+        end
         njac = njac + 1
 
         # Scale Jacobian and change sign of it
@@ -321,7 +336,7 @@ function solveNonlinearEquations!(F!::Function,
             # Natural/restricted monotonicity test failed
             lambda_new = min(mue, 0.5*lambda)  # Corrected damping factor  (3.48)
             if lambda <= lambda_min
-                lambda = lambda_new  # Does not make sense, bug in nleq_err.c?
+                lambda = lambda_new  # Does not make sense, bug?
             else
                 lambda = max(lambda_new, lambda_min)
             end
