@@ -6,11 +6,12 @@ makedocs(
   authors  = "Hilding Elmqvist (Mogram) and Martin Otter (DLR-SR)",
   format = Documenter.HTML(prettyurls = false),
   pages    = [
-     "Home"   => "index.md",
-	 "Tutorial" => "Tutorial.md",
-     "Data Structures"        => "DataStructures.md",
-     "Equation Sorting"       => "EquationSorting.md",
-     "Equation Reduction"     => "EquationReduction.md",
+     "Home"                         => "index.md",
+     "Tutorial"                     => "Tutorial.md",
+     "Data Structures"              => "DataStructures.md",
+     "Equation Sorting"             => "EquationSorting.md",
+     "Equation Reduction"           => "EquationReduction.md",
      "Transformation to ODE System" => "TransformationToODEs.md",
+     "Nonlinear Equations"          => "NonlinearEquations.md",
   ]
 )

@@ -1,7 +1,7 @@
 """
 Main module of ModiaBase.
 
-* Developers: Hilding Elmqvist, Mogram AB, Martin Otter, DLR  
+* Developers: Hilding Elmqvist, Mogram AB, Martin Otter, DLR
 * First version: December 2020
 * License: MIT (expat)
 
@@ -35,5 +35,8 @@ using .Simplify
 
 include("Symbolic.jl")
 using .Symbolic
+
+include("NonlinearEquations.jl")
+using .NonlinearEquations
 
 end
