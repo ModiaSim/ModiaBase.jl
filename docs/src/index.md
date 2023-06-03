@@ -77,6 +77,17 @@ julia> ]add ModiaBase
 
 ## Release Notes
 
+### Version 0.11.1
+
+- Included function `solveNonlinearEquations!` to solve nonlinear equation systems `F(x) = 0`  
+  with `length(F) <= length(x)` by global Gauss-Newton method with error oriented convergence criterion 
+  and adaptive trust region strategy. Optionally Broyden's 'good' Jacobian rank-1 updates are used. 
+  In case of underdetermined and/or rank-deficient equation system, a least squares solution 
+  is computed such that the norm of the scaled solution vector is minimal.
+  
+- Removed the manifest.toml file.
+
+
 ### Version 0.11.0
 
 - Moved ModiaBase.Symbolic.makeDerVar to Modia (because makeDerVar needs FloatType for

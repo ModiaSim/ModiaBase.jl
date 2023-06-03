@@ -49,7 +49,7 @@ end
                              forwardjac = false,
                              loglevel::Loglevel = info) -> convergence::Bool
 
-Solve nonlinear equation system ``F(x) = 0`` by global Gauss-Newton method with error oriented convergence criterion and adaptive trust region strategy. Optionally Broyden's 'good' Jacobian rank-1 updates are used. In case of underdetermined systems of equations, the 'shortest' least square solution is computed.
+Solve nonlinear equation system ``F(x) = 0`` with ``length(F) <= length(x)`` by global Gauss-Newton method with error oriented convergence criterion and adaptive trust region strategy. Optionally Broyden's 'good' Jacobian rank-1 updates are used. In case of underdetermined and/or rank-deficient equation system, a least squares solution is computed such that the norm of the scaled solution vector is minimal.
 
 `F!` is a C1 continuous function with length ``n`` of input and ``m`` of output vector where ``n >= m`` (determined or underdetermined system of equations). It has to be defined by
     F!(F::Vector, x::Vector) -> success::Bool
