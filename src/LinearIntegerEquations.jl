@@ -196,10 +196,14 @@ end
              
              
 """
-    rk = upperTrapezoidal!(Gint, eInt, GcInt2, vActive, ieq)
+    rk = upperTrapezoidal!(Gint, eInt, GcInt, GcInt2, vActive, ieq)
     
 Transform equations ieq..end to upper trapezoidal form and return the 
 rank `rk` (`ieq <= rk <= length(Gint)`).
+On return, Gint[i][1] with ieq <= i <= rk, is the variable of equation i
+that is solved by this equation.
+GcInt2 are the coefficients of Gint that are modified by this function
+GcInt coefficients are not modified, but are reordered according to the reordering of GcInt2
 """
 function upperTrapezoidal!(Gint, eInt::Vector{Int}, GcInt, GcInt2, vActive::Vector{Bool}, ieq::Int)::Int
     j        = 0
@@ -213,6 +217,12 @@ function upperTrapezoidal!(Gint, eInt::Vector{Int}, GcInt, GcInt2, vActive::Vect
         # Search for a pivot in equations k:neq
         j = 0
         e = 0
+        
+        # Inspect equations k:neq and return equation e and variable j in this equation that is active
+        # (will be used as pivot, since GcInt2[e][j] is guaranteed to be not zero).  
+        # In order to reduce fill-in ("number of variables in the equations become larger")
+        # the simple heuristic is used, that first equations with one variable,
+        # then equations with two variables and only then all equations are inspected
         
         # Inspect only equations with one variable
         for k2 = k:neq
@@ -250,8 +260,9 @@ function upperTrapezoidal!(Gint, eInt::Vector{Int}, GcInt, GcInt2, vActive::Vect
         end
 
         if j > 0
-            # Extract infos
+            # Pivot found
             pivot = GcInt2[e][j]
+            @assert(pivot != 0)
             vj    = Gint[e][j]
             deleteat!(Gint[e] , j)  # Remove variable vj in equation e (is added later to the front)
             deleteat!(GcInt2[e], j)
@@ -261,7 +272,7 @@ function upperTrapezoidal!(Gint, eInt::Vector{Int}, GcInt, GcInt2, vActive::Vect
                 swapEquations!(Gint, eInt, GcInt, GcInt2, k, e)
             end
         else
-            # no pivot found: equations k:neq have no active variables (rank = k-1)
+            # No pivot found: equations k:neq have no active variables (rank = k-1)
             return k-1
         end
         
@@ -301,71 +312,76 @@ function revertAssociation(Avar::Vector{Int})::Vector{Int}
 end
 
 
-needsVariableElimination(vProperty, eq_k::Vector{Int}) = findfirst(v->isEliminated(vProperty,v), eq_k) != nothing       
+function simplifyEquationStartingAtSecondVariable!(eq_k, eqc_k, vProperty)::Nothing
+    j = 2
+    while j <= length(eq_k)
+        v_j = eq_k[j]
+        
+        # Eliminate variable if possible
+        if isNotEliminated(vProperty, v_j)
+            j += 1
+            continue
+            
+        elseif isZero(vProperty, v_j)
+            deleteat!(eq_k , j)
+            deleteat!(eqc_k, j)
+            continue
+            
+        else  # alias or negAlias
+            if isAlias(vProperty, v_j)
+                v_add  = alias(vProperty, v_j)
+                vc_add = eqc_k[j]
+            else
+                v_add  = negAlias(vProperty, v_j)
+                vc_add = -eqc_k[j]
+            end
+            
+            # Check whether v_add appears in equation
+            isPresent = false
+            for i = 2:length(eq_k)
+                if i != j && eq_k[i] == v_add
+                    isPresent = true
+                    eqc_k[i] += vc_add
+                    if eqc_k[i] == 0
+                        if i < j 
+                            deleteat!(eq_k , [i,j])
+                            deleteat!(eqc_k, [i,j])
+                        else
+                            deleteat!(eq_k , [j,i])
+                            deleteat!(eqc_k, [j,i])
+                        end
+                    else                                
+                        deleteat!(eq_k , j)
+                        deleteat!(eqc_k, j)
+                    end
+                    break
+                end
+            end
+            if !isPresent
+                eq_k[j]  = v_add
+                eqc_k[j] = vc_add
+            end
+            simplifyEquationStartingAtSecondVariable!(eq_k, eqc_k, vProperty)
+            break            
+        end                          
+    end
+    return nothing
+end    
 
 
 """
     equationRemoved = simplifyOneEquation!(eq_k, eqc_k, AvarRev, vEliminated, vProperty)
     
-Simplify one equation has much as possible. Return true, if equation is removed, otherwise return false.
+Simplify one equation as much as possible. Return true, if equation is removed, otherwise return false.
+An equation has at least one variable.
+The equation should be solved for the first variable, eq_k[1].
+Since simplifyOneEquation is called from equation rk2...1, , eq_k[1] is not present
+in the "upper" part of the equations 
 """
 function simplifyOneEquation!(eq_k, eqc_k, AvarRev, vEliminated, vProperty)::Bool   
-    while length(eq_k) > 1 && needsVariableElimination(vProperty, eq_k[2:end])            
-        # Equation has more as one variable and at least one of the variables is zero, alias or negative alias variable    
-        for j = 2:length(eq_k)
-            v_j = eq_k[j]
-            
-            # Eliminate variable if possible
-            if isNotEliminated(vProperty, v_j)
-                continue
-                
-            elseif isZero(vProperty, v_j)
-                deleteat!(eq_k , j)
-                deleteat!(eqc_k, j)
-                break
-                
-            else  # alias or negAlias
-                if isAlias(vProperty, v_j)
-                    v_add  = alias(vProperty, v_j)
-                    vc_add = eqc_k[j]
-                else
-                    v_add  = negAlias(vProperty, v_j)
-                    vc_add = -eqc_k[j]
-                end
-                
-                # Check whether v_add appears in equation
-                isPresent = false
-                for i = 2:length(eq_k)
-                    if i != j && eq_k[i] == v_add
-                        isPresent = true
-                        eqc_k[i] += vc_add
-                        if eqc_k[i] == 0
-                            if i < j 
-                                deleteat!(eq_k , [i,j])
-                                deleteat!(eqc_k, [i,j])
-                            else
-                                deleteat!(eq_k , [j,i])
-                                deleteat!(eqc_k, [j,i])
-                            end
-                        else                                
-                            deleteat!(eq_k , j)
-                            deleteat!(eqc_k, j)
-                        end
-                        break
-                    end
-                end
-                if isPresent
-                    break
-                else
-                    eq_k[j]  = v_add
-                    eqc_k[j] = vc_add
-                end
-            end                     
-        end
-    end 
-    
+    simplifyEquationStartingAtSecondVariable!(eq_k, eqc_k, vProperty)  
          
-    # Check if equation can be removed
+    # If possible, remove simplified equation
     vk = eq_k[1] 
     if AvarRev[vk] == 0
         # vk is not a derivative of a variable -> it can be removed
@@ -543,7 +559,8 @@ function simplifyLinearIntegerEquations!(G, eInt::Vector{Int}, GcInt, Avar::Vect
     # Construct vActive1 and vActive2 for first and second transformation to upper trapezoidal form
     # (vActiveX[v] = false, if variable shall be ignored when transforming to upper trapezoidal form)
     #     vActive1[v] = true, if variable is not a potential state (does not appear differentiated)
-    #                         and variable v must be solved from the linear Integer equations
+    #                         and variable v must be solved from the linear Integer equations because
+    #                         it does not appear in the non-Integer equations.
     #     vActive2[v] = true, if variable is not a potential state (does not appear differentiated)
     vActive2 = [v==0 for v in Avar]
     vActive1 = copy(vActive2)
@@ -571,7 +588,7 @@ function simplifyLinearIntegerEquations!(G, eInt::Vector{Int}, GcInt, Avar::Vect
         for v in unknowns
             print(lpad(string(v),8), ": ", var_name(v))
             if v in vShouldBeSolved
-                print("    (to be solved by equations)\n")
+                print("    (to be solved by Integer equations)\n")
             elseif Avar[v] > 0
                 print("    (potential state)\n")
             else 
@@ -584,8 +601,10 @@ function simplifyLinearIntegerEquations!(G, eInt::Vector{Int}, GcInt, Avar::Vect
     # Construct a deepcopy of GcInt (this copy is modified by the transformation to upper trapezoidal form)
     GcInt2 = deepcopy(GcInt)
    
-    # First transformation to upper trapezoidal form:
-    #    Diagonal entries: Variables v that must be solved from the linear Integer equations 
+    # First transformation to upper trapezoidal form.
+    # Active variables (that is the unknowns in this transformation) are variables
+    # that do not appear in the non-Integer equations (so MUST be solved from the Integer equations)
+    # AND are not potential states (do not appear in the der(..) operator)     
     #println("\n... before upperTrapezoidal!:")
     #println("     Gint  = $Gint")
     #println("     GcInt2 = $GcInt2")     
@@ -597,12 +616,25 @@ function simplifyLinearIntegerEquations!(G, eInt::Vector{Int}, GcInt, Avar::Vect
         vEliminated = setdiff(vShouldBeSolved, vSolved)
         vProperty   = fill(IS_PRESENT, nv)    
         for v in vEliminated
-            vProperty[v] = 0
+            vProperty[v] = 0   # variables in vEliminated are set to zero.
         end
         nvArbitrary = length(vEliminated)
         
         if log
-            println("\n    After first transformation to trapezoidal form (eliminate variables that must be solved):")
+            if length(vEliminated) == 0
+                str = ")"
+            else
+                str = ";\n     variables $(var_name(vEliminated[1]))"
+                for i = 2:length(vEliminated)
+                    str = str * ", " * var_name(vEliminated[i])
+                end
+                str = str * " can be arbitrarily set and will be set to zero):"
+            end
+            println()
+            println("    After first transformation to trapezoidal form")
+            println("    (equations before rk1 should be solved for the first variable vFirst in the respective equation")
+            println("     under the assumption that the potential states (variable appearing differentiated) are known;")
+            println("     variables vFirst do not appear in the equations below rk1$str")
             printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1,0,0))
         end
        
@@ -610,7 +642,12 @@ function simplifyLinearIntegerEquations!(G, eInt::Vector{Int}, GcInt, Avar::Vect
     rk2 = upperTrapezoidal!(Gint, eInt, GcInt, GcInt2, vActive2, rk1+1)
     
     if log
-        println("\n    After second transformation to trapezoidal form (ignore potential states):")
+        println() 
+        println("    After second transformation to trapezoidal form")
+        println("    (equations before rk1 are not changed;")
+        println("     equations after rk1 should be solved for the first variable vFirst in the respective equation")
+        println("     under the assumption that the potential states (variable appearing differentiated) are known;")
+        println("     variables vFirst do not appear in the equations below rk2)")        
         printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1,rk2,0))
     end    
     
@@ -623,7 +660,10 @@ function simplifyLinearIntegerEquations!(G, eInt::Vector{Int}, GcInt, Avar::Vect
     #println("     rk1 = $rk1, rk2 = $rk2, rk3 = $rk3")
      
     if log
-        println("\n    After third transformation to trapezoidal form (eliminate potential states):")
+        println()
+        println("    After third transformation to trapezoidal form")
+        println("    (equations after rk2 should be solved for the first variable vFirst in the respective equation;")
+        println("     vFirst variables are dummy states)")        
         printLinearIntegerEquations(Gint, eInt, GcInt2, var_name, rk=(rk1, rk2, rk3))
     end 
     
